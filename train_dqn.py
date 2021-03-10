@@ -86,13 +86,13 @@ if __name__ == '__main__':
                                is_done_batch, agent, target_network, device=device)
 
         loss.backward()
-        grad_norm = nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
+        #grad_norm = nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
         opt.step()
         opt.zero_grad()
 
-        if step % loss_freq == 0:
-            td_loss_history.append(loss.data.cpu().item())
-            grad_norm_history.append(grad_norm)
+        #if step % loss_freq == 0:
+            #td_loss_history.append(loss.data.cpu().item())
+            #grad_norm_history.append(grad_norm)
 
         if step % refresh_target_network_freq == 0:
             # Load agent weights into target_network
