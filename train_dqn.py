@@ -10,9 +10,6 @@ import torch.nn.functional as F
 import pickle
 import psutil
 
-def is_enough_ram(min_available_gb=0.1):
-    mem = psutil.virtual_memory()
-    return mem.available >= min_available_gb * (1024 ** 3)
 
 def linear_decay(init_val, final_val, cur_step, total_steps):
     if cur_step >= total_steps:
@@ -49,7 +46,7 @@ if __name__ == '__main__':
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
-        device  = torch.device('cuda:1')
+        device  = torch.device('cuda:0')
     else:
         device = torch.device('cpu')
     print(device)
@@ -63,7 +60,7 @@ if __name__ == '__main__':
     target_network = DQNAgent(state_shape, n_actions).to(device)
     target_network.load_state_dict(agent.state_dict())
     opt = torch.optim.Adam(agent.parameters(), lr=1e-4)
-    exp_replay = ReplayBuffer(10**3)
+    exp_replay = ReplayBuffer(10**4)
 
     for i in range(100):
         play_and_record(state, agent, env, exp_replay, n_steps=10**2)
@@ -73,7 +70,7 @@ if __name__ == '__main__':
 
     state = env.reset()
     for step in trange(step, total_steps + 1):
-       
+
         agent.epsilon = linear_decay(init_epsilon, final_epsilon, step, decay_steps)
 
         # play
