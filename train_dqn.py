@@ -99,11 +99,11 @@ if __name__ == '__main__':
             target_network.load_state_dict(agent.state_dict())
 
         if step % eval_freq == 0:
-            torch.save(agent.state_dict(), 'dqn.weights')
+            #torch.save(agent.state_dict(), 'dqn.weights')
             mean_rw_history.append(np.mean(evaluate(
                 make_env(clip_rewards=True, seed=step), agent, n_games=3 * n_lives, greedy=True))
             )
             #print(mean_rw_history[-1])
 
-            with open('dqn_rewards.pkl', 'wb') as f:
-                pickle.dump(mean_rw_history, f)
+            #with open('dqn_rewards.pkl', 'wb') as f:
+                #pickle.dump(mean_rw_history, f)
