@@ -73,15 +73,7 @@ if __name__ == '__main__':
 
     state = env.reset()
     for step in trange(step, total_steps + 1):
-        if not is_enough_ram():
-            print('less that 100 Mb RAM available, freezing')
-            print('make sure everythin is ok and make KeyboardInterrupt to continue')
-        try:
-            while True:
-                pass
-        except KeyboardInterrupt:
-            pass
-
+       
         agent.epsilon = linear_decay(init_epsilon, final_epsilon, step, decay_steps)
 
         # play
