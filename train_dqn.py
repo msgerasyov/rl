@@ -47,7 +47,7 @@ if __name__ == '__main__':
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
-        device  = torch.device('cuda:1')
+        device  = torch.device('cuda:0')
     else:
         device = torch.device('cpu')
     #device = torch.device('cpu')
