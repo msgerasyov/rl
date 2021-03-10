@@ -43,8 +43,10 @@ if __name__ == '__main__':
 
     np.random.seed(seed)
     torch.manual_seed(seed)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    #device = torch.device('cpu')
+    if torch.cuda.is_available():
+        device = torch.cuda.device(1)
+    else:
+        device = torch.device('cpu')
     print(device)
     env = make_env(seed)
     state_shape = env.observation_space.shape
