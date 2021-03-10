@@ -23,6 +23,7 @@ timesteps_per_epoch = 1
 batch_size = 16
 total_steps = 2 * 10**6
 decay_steps = 10**6
+buffer_size = 10**4
 
 init_epsilon = 0.9
 final_epsilon = 0.1
@@ -61,12 +62,12 @@ if __name__ == '__main__':
     target_network = DQNAgent(state_shape, n_actions).to(device)
     target_network.load_state_dict(agent.state_dict())
     opt = torch.optim.Adam(agent.parameters(), lr=1e-4)
-    exp_replay = ReplayBuffer(100)
+    exp_replay = ReplayBuffer(buffer_size)
     
     print('test_buffer')
     for i in range(100):
         play_and_record(state, agent, env, exp_replay, n_steps=10**2)
-        if len(exp_replay) == 100:
+        if len(exp_replay) == buffer_size:
             break
     print(len(exp_replay))
 
