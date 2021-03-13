@@ -298,6 +298,9 @@ class Worker(mp.Process):
       self.prev_observation = self.env.reset()
       self.prev_memories = self.lnet.get_initial_state(1)
 
+    def _sync_local_with_global(self):
+        self.lnet.load_state_dict(self.master.state_dict())
+
     def work(self, n_iter):
       obs = []
       actions = []
@@ -346,7 +349,7 @@ class Worker(mp.Process):
         time.sleep(int(np.random.rand() * (self.process_id + 5)))
         iter = 0
         while iter < MAX_EP:
-            self.lnet.load_state_dict(self.master.state_dict())
+            self._sync_local_with_global()
             if iter % EVAL_FREQ == 0 and self.process_id == 0:
                 reward = np.mean(evaluate(self.master, make_env(), n_games=3))
                 torch.save(self.master.state_dict(), 'a3c.weights')
