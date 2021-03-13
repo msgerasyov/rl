@@ -7,11 +7,14 @@ Original file is located at
     https://colab.research.google.com/drive/1KIDahkxKNnTuNuYK3z1faa6jxX8L5aqs
 """
 
+
 # Commented out IPython magic to ensure Python compatibility.
 import numpy as np
 import sys
 import time
-# %matplotlib inline
+import os
+
+os.environ["OMP_NUM_THREADS"] = "1"
 
 import cv2
 import numpy as np
@@ -82,7 +85,7 @@ def crop_func(img):
 
 def make_env():
     env = gym.make("KungFuMasterDeterministic-v0")
-    env = PreprocessAtari(env, height=42, width=42,
+    env = PreprocessAtari(env, height=80, width=80,
                           crop=crop_func,
                           color=False, n_frames=1)
     return env
@@ -100,17 +103,28 @@ class AC_Net(nn.Module):
     def __init__(self, obs_shape, n_actions, reuse=False):
         """A simple actor-critic agent"""
         super(self.__class__, self).__init__()
+        self.obs_shape = obs_shape
+        self.conv = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, stride=2),
+            nn.ReLU(),
+        )
 
-        self.conv0 = nn.Conv2d(1, 32, kernel_size=(3, 3), stride=(2, 2))
-        self.conv1 = nn.Conv2d(32, 32, kernel_size=(3, 3), stride=(2, 2))
-        self.conv2 = nn.Conv2d(32, 32, kernel_size=(3, 3), stride=(2, 2))
         self.flatten = Flatten()
 
-        self.hid = nn.Linear(512, 128)
-        self.rnn = nn.LSTMCell(128, 128)
+        self.hid = nn.Linear(self.feature_size(), 256)
+        self.rnn = nn.LSTMCell(256, 256)
 
-        self.logits = nn.Linear(128, n_actions)
-        self.state_value = nn.Linear(128, 1)
+        self.logits = nn.Linear(256, n_actions)
+        self.state_value = nn.Linear(256, 1)
+
+    def feature_size(self):
+        return self.conv(torch.zeros(1, *self.obs_shape)).view(1, -1).size(1)
 
     def forward(self, prev_state, obs_t):
         """
@@ -121,15 +135,10 @@ class AC_Net(nn.Module):
         # Apply the whole neural net for one step here.
         # See docs on self.rnn(...).
         # The recurrent cell should take the last feedforward dense layer as input.
-        h = self.conv0(obs_t)
-        h = F.elu(h)
-        h = self.conv1(h)
-        h = F.elu(h)
-        h = self.conv2(h)
-        h = F.elu(h)
+        h = self.conv(obs_t)
         h = self.flatten(h)
         h = self.hid(h)
-        h = F.elu(h)
+        h = F.relu(h)
 
         new_state = h_new, c_new = self.rnn(h, prev_state)
         logits = self.logits(h_new)
@@ -139,7 +148,7 @@ class AC_Net(nn.Module):
 
     def get_initial_state(self, batch_size):
         """Return a list of agent memory states at game start. Each state is a np array of shape [batch_size, ...]"""
-        return torch.zeros((batch_size, 128)), torch.zeros((batch_size, 128))
+        return torch.zeros((batch_size, 256)), torch.zeros((batch_size, 256))
 
     def sample_actions(self, agent_outputs):
         """pick actions given numeric agent outputs (np arrays)"""
@@ -365,8 +374,9 @@ if __name__ == "__main__":
     n_actions = env.action_space.n
 
     master = AC_Net(obs_shape, n_actions)
-    shared_opt = SharedAdam(master.parameters())
     master.share_memory()
+    print(master.feature_size())
+    shared_opt = SharedAdam(master.parameters())
 
     print('Workers count:', mp.cpu_count())
 
