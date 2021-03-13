@@ -11,7 +11,6 @@ Original file is located at
 import numpy as np
 import sys
 import time
-from IPython.core import display
 import matplotlib.pyplot as plt
 # %matplotlib inline
 
