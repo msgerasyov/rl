@@ -266,8 +266,8 @@ def evaluate(agent, env, n_games=1):
     return game_rewards
 
 GAMMA = 0.99
-MAX_EP = 150000
-EVAL_FREQ = 150
+MAX_EP = 15000
+EVAL_FREQ = 100
 
 class SharedAdam(torch.optim.Adam):
     def __init__(self, params, lr=1e-5):
@@ -365,10 +365,10 @@ if __name__ == "__main__":
     shared_opt = SharedAdam(master.parameters())
     master.share_memory()
 
-    print('Workers count:', mp.cpu_count())
+    print('Workers count:', 8)
 
     # parallel training
-    workers = [Worker(master, shared_opt, i) for i in range(mp.cpu_count())]
+    workers = [Worker(master, shared_opt, i) for i in range(8)]
     for worker in workers:
       worker.start()
     for worker in workers:
