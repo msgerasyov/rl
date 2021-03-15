@@ -9,7 +9,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 MAX_EP = 150000
 EVAL_FREQ = 150
 LSTM_SIZE = 128
-ENV_NAME = 'PongNoFrameskip-v4'
+ENV_NAME = "PongDeterministic-v4"
 
 import cv2
 import numpy as np
