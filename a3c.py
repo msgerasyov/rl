@@ -156,7 +156,7 @@ class AC_Net(nn.Module):
     def sample_actions(self, agent_outputs):
         """pick actions given numeric agent outputs (np arrays)"""
         logits, state_values = agent_outputs
-        probs = F.softmax(logits.detach(), dim=1)
+        probs = F.softmax(logits, dim=1)
         return torch.multinomial(probs, 1)[:, 0].data.numpy()
 
     def step(self, prev_state, obs_t):
@@ -236,7 +236,7 @@ class AC_Net(nn.Module):
 
 def evaluate(agent, env, n_games=1):
     """Plays an entire game start to end, returns session rewards."""
-    
+
     game_rewards = []
     for _ in range(n_games):
         # initial observation and memory
