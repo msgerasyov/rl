@@ -13,6 +13,10 @@ import time
 import os
 
 os.environ["OMP_NUM_THREADS"] = "1"
+MAX_EP = 150000
+EVAL_FREQ = 150
+LSTM_SIZE = 150
+
 
 import cv2
 import numpy as np
@@ -98,10 +102,11 @@ class Flatten(nn.Module):
         return input.view(input.size(0), -1)
 
 class AC_Net(nn.Module):
-    def __init__(self, obs_shape, n_actions, reuse=False):
+    def __init__(self, obs_shape, n_actions, lstm_size=128):
         """A simple actor-critic agent"""
         super(self.__class__, self).__init__()
         self.obs_shape = obs_shape
+        self.lstm_size = lstm_size
         self.conv = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, stride=2),
             nn.ReLU(),
@@ -115,11 +120,11 @@ class AC_Net(nn.Module):
 
         self.flatten = Flatten()
 
-        self.hid = nn.Linear(self.feature_size(), 256)
-        self.rnn = nn.LSTMCell(256, 256)
+        self.hid = nn.Linear(self.feature_size(), self.lstm_size)
+        self.rnn = nn.LSTMCell(self.lstm_size, self.lstm_size)
 
-        self.logits = nn.Linear(256, n_actions)
-        self.state_value = nn.Linear(256, 1)
+        self.logits = nn.Linear(self.lstm_size, n_actions)
+        self.state_value = nn.Linear(self.lstm_size, 1)
 
     def feature_size(self):
         return self.conv(torch.zeros(1, *self.obs_shape)).view(1, -1).size(1)
@@ -146,7 +151,7 @@ class AC_Net(nn.Module):
 
     def get_initial_state(self, batch_size):
         """Return a list of agent memory states at game start. Each state is a np array of shape [batch_size, ...]"""
-        return torch.zeros((batch_size, 256)), torch.zeros((batch_size, 256))
+        return torch.zeros((batch_size, self.lstm_size)), torch.zeros((batch_size, self.lstm_size))
 
     def sample_actions(self, agent_outputs):
         """pick actions given numeric agent outputs (np arrays)"""
@@ -215,15 +220,13 @@ class AC_Net(nn.Module):
             # current state values
             V_t = state_values[t]
             V_next = state_values[t+1].detach()           # next state values
+            is_alive = is_not_done[t]
             # log-probability of a_t in s_t
             logpi_a_s_t = logprobas_for_actions[t]
 
             # update G_t = r_t + gamma * G_{t+1} as we did in week6 reinforce
-            if is_done[t]:
-              cumulative_returns = 0
 
-            cumulative_returns = G_t = r_t + gamma * cumulative_returns
-
+            cumulative_returns = G_t = r_t + gamma * cumulative_returns * is_alive
 
             # Compute temporal difference error (MSE for V(s))
             value_loss += (r_t + gamma * V_next * is_not_done[t] - V_t)**2
@@ -272,10 +275,6 @@ def evaluate(agent, env, n_games=1):
         game_rewards.append(total_reward)
     return game_rewards
 
-GAMMA = 0.99
-MAX_EP = 150000
-EVAL_FREQ = 150
-
 class SharedAdam(torch.optim.Adam):
     def __init__(self, params, lr=1e-5):
         super(SharedAdam, self).__init__(params, lr=lr)
@@ -301,7 +300,7 @@ class Worker(mp.Process):
       self.env = make_env()
       obs_shape = env.observation_space.shape
       n_actions = env.action_space.n
-      self.lnet = AC_Net(obs_shape, n_actions)
+      self.lnet = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
       self.prev_observation = self.env.reset()
       self.prev_memories = self.lnet.get_initial_state(1)
 
@@ -371,9 +370,8 @@ if __name__ == "__main__":
     obs_shape = env.observation_space.shape
     n_actions = env.action_space.n
 
-    master = AC_Net(obs_shape, n_actions)
+    master = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
     master.share_memory()
-    print(master.feature_size())
     shared_opt = SharedAdam(master.parameters())
 
     print('Workers count:', mp.cpu_count())
