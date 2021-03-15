@@ -176,7 +176,7 @@ class AC_Net(nn.Module):
         # add-up three loss components and average over time
         loss = -J_hat / rollout_length +\
             value_loss / rollout_length +\
-              -0.02 * entropy_reg
+              -0.01 * entropy_reg
 
         return loss
 
