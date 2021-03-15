@@ -260,7 +260,7 @@ class Worker(mp.Process):
         while iter < MAX_EP:
             self._sync_local_with_global()
             if iter % EVAL_FREQ == 0 and self.process_id == 0:
-                reward = np.mean(evaluate(self.master, make_env(ENV_NAME, crop=crop_func), n_games=15))
+                reward = np.mean(evaluate(self.master, make_env(ENV_NAME, crop=crop_func), n_games=5))
                 torch.save(self.master.state_dict(), 'a3c-{0}.weights'.format(ENV_NAME[0:5]))
                 print(iter, reward)
             obs, actions, rewards, is_done, logits, state_values = self.work(20)
