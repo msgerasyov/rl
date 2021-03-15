@@ -14,8 +14,8 @@ import time
 import os
 
 os.environ["OMP_NUM_THREADS"] = "1"
-MAX_EP = 150000
-EVAL_FREQ = 150
+MAX_EP = 500000
+EVAL_FREQ = 1000
 LSTM_SIZE = 128
 ENV_NAME = "KungFuMasterDeterministic-v0"
 
@@ -234,11 +234,12 @@ class Worker(mp.Process):
       actions = []
       rewards = []
       is_done = []
-      prev_memories = self.prev_memories
+      #prev_memories = self.prev_memories
 
       for _ in range(n_iter-1):
 
-        new_memories, readouts = self.lnet.step(prev_memories, [self.prev_observation])
+        new_memories, readouts = self.lnet.step(
+            self.prev_memories, [self.prev_observation])
         action = self.lnet.sample_actions(readouts)
 
         new_observation, reward, done, _ = self.env.step(action[0])
@@ -251,7 +252,7 @@ class Worker(mp.Process):
         rewards.append(reward)
         is_done.append(done)
 
-        prev_memories = new_memories
+        self.prev_memories = new_memories
         self.prev_observation = new_observation
 
 
@@ -259,10 +260,10 @@ class Worker(mp.Process):
       actions.append(0)
       rewards.append(0)
       is_done.append(False)
-      initial_memory = self.prev_memories
-      self.prev_memories = prev_memories
+      #initial_memory = self.prev_memories
+      #self.prev_memories = prev_memories
 
-      return obs, actions, rewards, is_done, initial_memory
+      return obs, actions, rewards, is_done, self.prev_memories
 
     def train(self, opt, states, actions, rewards, is_done,
               prev_memory_states, gamma=0.99):
