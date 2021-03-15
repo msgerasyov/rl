@@ -9,7 +9,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 MAX_EP = 150000
 EVAL_FREQ = 150
 LSTM_SIZE = 128
-ENV_NAME = "KungFuMasterDeterministic-v0"
+ENV_NAME = "BreakoutNoFrameskip-v4"
 
 import cv2
 import numpy as np
@@ -19,7 +19,7 @@ from gym.spaces.box import Box
 from preprocess_atari import make_env
 
 def crop_func(img):
-  return img[60:-30, 15:]
+  return img[25:200, :]
 
 import torch
 import torch.nn as nn
@@ -261,7 +261,7 @@ class Worker(mp.Process):
             self._sync_local_with_global()
             if iter % EVAL_FREQ == 0 and self.process_id == 0:
                 reward = np.mean(evaluate(self.master, make_env(ENV_NAME, crop=crop_func), n_games=1))
-                torch.save(self.master.state_dict(), 'a3c.weights')
+                torch.save(self.master.state_dict(), 'a3c-{0}.weights'.format(ENV_NAME[0:5]))
                 print(iter, reward)
             obs, actions, rewards, is_done, logits, state_values = self.work(20)
             self.train(self.opt, obs, actions, rewards, is_done, logits, state_values)
