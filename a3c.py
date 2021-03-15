@@ -9,7 +9,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 MAX_EP = 150000
 EVAL_FREQ = 150
 LSTM_SIZE = 128
-ENV_NAME = "BreakoutNoFrameskip-v4"
+ENV_NAME = 'PongNoFrameskip-v4'
 
 import cv2
 import numpy as np
@@ -260,7 +260,7 @@ class Worker(mp.Process):
         while iter < MAX_EP:
             self._sync_local_with_global()
             if iter % EVAL_FREQ == 0 and self.process_id == 0:
-                reward = np.mean(evaluate(self.master, make_env(ENV_NAME, crop=crop_func), n_games=1))
+                reward = np.mean(evaluate(self.master, make_env(ENV_NAME, crop=crop_func), n_games=15))
                 torch.save(self.master.state_dict(), 'a3c-{0}.weights'.format(ENV_NAME[0:5]))
                 print(iter, reward)
             obs, actions, rewards, is_done, logits, state_values = self.work(20)
