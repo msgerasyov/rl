@@ -156,16 +156,17 @@ class AC_Net(nn.Module):
     def sample_actions(self, agent_outputs):
         """pick actions given numeric agent outputs (np arrays)"""
         logits, state_values = agent_outputs
-        probs = F.softmax(logits, dim=1)
+        probs = F.softmax(logits.detach(), dim=1)
         return torch.multinomial(probs, 1)[:, 0].data.numpy()
 
     def step(self, prev_state, obs_t):
         """ like forward, but obs_t is a numpy array """
         obs_t = torch.tensor(np.asarray(obs_t), dtype=torch.float32)
         (h, c), (l, s) = self.forward(prev_state, obs_t)
-        return (h.detach(), c.detach()), (l.detach(), s.detach())
+        return (h.detach(), c.detach()), (l, s)
 
-    def compute_rollout_loss(self, states, actions, rewards, is_done, prev_memory_states, gamma=0.99):
+    def compute_rollout_loss(self, states, actions, rewards, is_done,
+                            logits, state_values, gamma=0.99):
 
         states = torch.tensor(np.asarray(states), dtype=torch.float32) # shape: [time, c, h, w]
         actions = torch.tensor(np.array(actions), dtype=torch.int64)  # shape: [time]
@@ -173,23 +174,6 @@ class AC_Net(nn.Module):
         is_done = torch.tensor(np.array(is_done, dtype=int), dtype=torch.float32)  # shape: [time]
         is_not_done = 1 - is_done
         rollout_length = rewards.shape[0] - 1
-
-
-        # predict logits, probas and log-probas using an agent.
-        memory = [m.detach() for m in prev_memory_states]
-
-        logits = []  # append logit sequence here
-        state_values = []  # append state values here
-        for t in range(rewards.shape[0]):
-            obs_t = states[t]
-
-            # use agent to comute logits_t and state values_t.
-            # append them to logits and state_values array
-
-            memory, (logits_t, values_t) = self.forward(memory, obs_t.unsqueeze(0))
-
-            logits.append(logits_t.view(logits_t.size(0), -1))
-            state_values.append(values_t.view(values_t.size(0), -1))
 
         logits = torch.stack(logits, dim=1)
         logits = logits.view(logits.size(1), -1)
@@ -312,11 +296,13 @@ class Worker(mp.Process):
       actions = []
       rewards = []
       is_done = []
+      logits = []
+      state_values = []
 
-      for _ in range(n_iter-1):
-        new_memories, readouts = self.lnet.step(
-            self.prev_memories, [self.prev_observation])
-        action = self.lnet.sample_actions(readouts)
+      for _ in range(n_iter):
+        new_memories, (logits_t, value_t) = self.lnet.step(
+            self.prev_memories, self.prev_observation[None, ...])
+        action = self.lnet.sample_actions((logits_t, value_t))
 
         new_observation, reward, done, _ = self.env.step(action[0])
         if done:
@@ -327,17 +313,13 @@ class Worker(mp.Process):
         actions.append(action[0])
         rewards.append(reward)
         is_done.append(done)
+        logits.append(logits_t)
+        state_values.append(value_t)
 
         self.prev_memories = new_memories
         self.prev_observation = new_observation
 
-
-      obs.append(self.prev_observation)
-      actions.append(0)
-      rewards.append(0)
-      is_done.append(False)
-
-      return obs, actions, rewards, is_done
+      return obs, actions, rewards, is_done, logits, state_values
 
     def train(self, opt, states, actions, rewards, is_done,
               prev_memory_states, gamma=0.99):
@@ -360,8 +342,8 @@ class Worker(mp.Process):
                 reward = np.mean(evaluate(self.master, make_env(), n_games=1))
                 torch.save(self.master.state_dict(), 'a3c.weights')
                 print(iter, reward)
-            obs, actions, rewards, is_done = self.work(20)
-            self.train(self.opt, obs, actions, rewards, is_done, self.prev_memories)
+            obs, actions, rewards, is_done, logits, state_values = self.work(20)
+            self.train(self.opt, obs, actions, rewards, is_done, logits, state_values)
             iter += 1
 
 if __name__ == "__main__":
