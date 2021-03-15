@@ -344,7 +344,7 @@ class Worker(mp.Process):
                 reward = np.mean(evaluate(self.master, make_env(), n_games=1))
                 torch.save(self.master.state_dict(), 'a3c.weights')
                 print(iter, reward)
-            obs, actions, rewards, is_done, logits, state_values = self.work(30)
+            obs, actions, rewards, is_done, logits, state_values = self.work(20)
             self.train(self.opt, obs, actions, rewards, is_done, logits, state_values)
             iter += 1
 
