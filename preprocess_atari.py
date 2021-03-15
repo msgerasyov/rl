@@ -129,7 +129,7 @@ def PrimaryAtariWrap(env, clip_rewards=True):
 
     return env
 
-def make_env(env_name, n_frames=1, clip_rewards=True, seed=None):
+def make_env(env_name, n_frames=1, clip_rewards=False, seed=None):
     env = gym.make(env_name)  # create raw env
     if seed is not None:
         env.seed(seed)
