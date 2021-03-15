@@ -16,6 +16,7 @@ import os
 os.environ["OMP_NUM_THREADS"] = "1"
 MAX_EP = 150000
 EVAL_FREQ = 150
+LSTM_SIZE = 128
 ENV_NAME = "KungFuMasterDeterministic-v0"
 
 import cv2
@@ -35,10 +36,11 @@ class Flatten(nn.Module):
         return input.view(input.size(0), -1)
 
 class AC_Net(nn.Module):
-    def __init__(self, obs_shape, n_actions, reuse=False):
+    def __init__(self, obs_shape, n_actions, lstm_size=128):
         """A simple actor-critic agent"""
         super(self.__class__, self).__init__()
         self.obs_shape = obs_shape
+        self.lstm_size = lstm_size
         self.conv = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, stride=2),
             nn.ReLU(),
@@ -52,11 +54,11 @@ class AC_Net(nn.Module):
 
         self.flatten = Flatten()
 
-        self.hid = nn.Linear(self.feature_size(), 512)
-        self.rnn = nn.LSTMCell(512, 512)
+        self.hid = nn.Linear(self.feature_size(), self.lstm_size)
+        self.rnn = nn.LSTMCell(self.lstm_size, self.lstm_size)
 
-        self.logits = nn.Linear(512, n_actions)
-        self.state_value = nn.Linear(512, 1)
+        self.logits = nn.Linear(self.lstm_size, n_actions)
+        self.state_value = nn.Linear(self.lstm_size, 1)
 
     def feature_size(self):
         return self.conv(torch.zeros(1, *self.obs_shape)).view(1, -1).size(1)
@@ -67,9 +69,6 @@ class AC_Net(nn.Module):
         returns a new hidden state and whatever the agent needs to learn
         """
 
-        # Apply the whole neural net for one step here.
-        # See docs on self.rnn(...).
-        # The recurrent cell should take the last feedforward dense layer as input.
         h = self.conv(obs_t)
         h = self.flatten(h)
         h = self.hid(h)
@@ -83,7 +82,8 @@ class AC_Net(nn.Module):
 
     def get_initial_state(self, batch_size):
         """Return a list of agent memory states at game start. Each state is a np array of shape [batch_size, ...]"""
-        return torch.zeros((batch_size, 512)), torch.zeros((batch_size, 512))
+        return torch.zeros((batch_size, self.lstm_size)), \
+         torch.zeros((batch_size, self.lstm_size))
 
     def sample_actions(self, agent_outputs):
         """pick actions given numeric agent outputs (np arrays)"""
@@ -133,15 +133,8 @@ class AC_Net(nn.Module):
 
         logprobas_for_actions = logprobas[range(len(actions)), actions]
 
-        # Now let's compute two loss components:
-        # 1) Policy gradient objective.
-        # Notes: Please don't forget to call .detach() on advantage term. Also please use mean, not sum.
-        # it's okay to use loops if you want
         J_hat = 0  # policy objective as in the formula for J_hat
 
-        # 2) Temporal difference MSE for state values
-        # Notes: Please don't forget to call on V(s') term. Also please use mean, not sum.
-        # it's okay to use loops if you want
         value_loss = 0
 
         cumulative_returns = state_values[-1].detach()
@@ -151,17 +144,16 @@ class AC_Net(nn.Module):
             # current state values
             V_t = state_values[t]
             V_next = state_values[t+1].detach()           # next state values
+            is_alive = is_not_done[t]
             # log-probability of a_t in s_t
             logpi_a_s_t = logprobas_for_actions[t]
 
             # update G_t = r_t + gamma * G_{t+1} as we did in week6 reinforce
-            if is_done[t]:
-              cumulative_returns = 0
 
-            cumulative_returns = G_t = r_t + gamma * cumulative_returns
+            cumulative_returns = G_t = r_t + gamma * cumulative_returns * is_alive
 
             # Compute temporal difference error (MSE for V(s))
-            value_loss += (r_t + gamma * V_next * is_not_done[t] - V_t)**2
+            value_loss += (r_t + gamma * V_next * is_alive - V_t)**2
 
             # compute advantage A(s_t, a_t) using cumulative returns and V(s_t) as baseline
             advantage = cumulative_returns - V_t
@@ -176,7 +168,7 @@ class AC_Net(nn.Module):
         # add-up three loss components and average over time
         loss = -J_hat / rollout_length +\
             value_loss / rollout_length +\
-              -0.01 * entropy_reg
+              -0.02 * entropy_reg
 
         return loss
 
@@ -230,7 +222,7 @@ class Worker(mp.Process):
       self.env = make_env(ENV_NAME)
       obs_shape = env.observation_space.shape
       n_actions = env.action_space.n
-      self.lnet = AC_Net(obs_shape, n_actions)
+      self.lnet = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
       self.prev_observation = self.env.reset()
       self.prev_memories = self.lnet.get_initial_state(1)
 
@@ -242,10 +234,11 @@ class Worker(mp.Process):
       actions = []
       rewards = []
       is_done = []
+      prev_memories = self.prev_memories
 
       for _ in range(n_iter-1):
-        new_memories, readouts = self.lnet.step(
-            self.prev_memories, [self.prev_observation])
+
+        new_memories, readouts = self.lnet.step(prev_memories, [self.prev_observation])
         action = self.lnet.sample_actions(readouts)
 
         new_observation, reward, done, _ = self.env.step(action[0])
@@ -258,7 +251,7 @@ class Worker(mp.Process):
         rewards.append(reward)
         is_done.append(done)
 
-        self.prev_memories = new_memories
+        prev_memories = new_memories
         self.prev_observation = new_observation
 
 
@@ -266,8 +259,10 @@ class Worker(mp.Process):
       actions.append(0)
       rewards.append(0)
       is_done.append(False)
+      initial_memory = self.prev_memories
+      self.prev_memories = prev_memories
 
-      return obs, actions, rewards, is_done
+      return obs, actions, rewards, is_done, initial_memory
 
     def train(self, opt, states, actions, rewards, is_done,
               prev_memory_states, gamma=0.99):
@@ -283,16 +278,15 @@ class Worker(mp.Process):
 
     def run(self):
         time.sleep(int(np.random.rand() * (self.process_id + 5)))
-        iter = 0
-        while iter < MAX_EP:
+        while self.master.train_step.value < self.master.steps:
             self._sync_local_with_global()
-            if iter % EVAL_FREQ == 0 and self.process_id == 0:
+            if self.master.train_step.value % EVAL_FREQ == 0 and self.process_id == 0:
                 reward = np.mean(evaluate(self.master, make_env(ENV_NAME), n_games=3))
                 torch.save(self.master.state_dict(), 'a3c.weights')
-                print(iter, reward)
-            obs, actions, rewards, is_done = self.work(20)
-            self.train(self.opt, obs, actions, rewards, is_done, self.prev_memories)
-            iter += 1
+                print(self.master.train_step.value, reward)
+            obs, actions, rewards, is_done, prev_memories = self.work(20)
+            self.train(self.opt, obs, actions, rewards, is_done, prev_memories)
+            self.master.train_step.value += 1
 
 if __name__ == "__main__":
 
@@ -300,7 +294,9 @@ if __name__ == "__main__":
     obs_shape = env.observation_space.shape
     n_actions = env.action_space.n
 
-    master = AC_Net(obs_shape, n_actions)
+    master = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
+    master.train_step = mp.Value('l', 0)
+    master.steps = MAX_EP
     master.share_memory()
     shared_opt = SharedAdam(master.parameters())
 
