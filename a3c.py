@@ -7,7 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1KIDahkxKNnTuNuYK3z1faa6jxX8L5aqs
 """
 
-
 # Commented out IPython magic to ensure Python compatibility.
 import numpy as np
 import sys
@@ -15,80 +14,16 @@ import time
 import os
 
 os.environ["OMP_NUM_THREADS"] = "1"
+MAX_EP = 150000
+EVAL_FREQ = 150
+ENV_NAME = "KungFuMasterDeterministic-v0"
 
 import cv2
 import numpy as np
+import gym
 from gym.core import Wrapper
 from gym.spaces.box import Box
-
-
-class PreprocessAtari(Wrapper):
-    def __init__(self, env, height=42, width=42, color=False,
-                 crop=lambda img: img, n_frames=4, dim_order='pytorch', reward_scale=1):
-        """A gym wrapper that reshapes, crops and scales image into the desired shapes"""
-        super(PreprocessAtari, self).__init__(env)
-        self.img_size = (height, width)
-        self.crop = crop
-        self.color = color
-        self.dim_order = dim_order
-
-        self.reward_scale = reward_scale
-        n_channels = (3 * n_frames) if color else n_frames
-
-        obs_shape = {
-            'theano': (n_channels, height, width),
-            'pytorch': (n_channels, height, width),
-            'tensorflow': (height, width, n_channels),
-        }[dim_order]
-
-        self.observation_space = Box(0.0, 1.0, obs_shape)
-        self.framebuffer = np.zeros(obs_shape, 'float32')
-
-    def reset(self):
-        """Resets the game, returns initial frames"""
-        self.framebuffer = np.zeros_like(self.framebuffer)
-        self.update_buffer(self.env.reset())
-        return self.framebuffer
-
-    def step(self, action):
-        """Plays the game for 1 step, returns frame buffer"""
-        new_img, r, done, info = self.env.step(action)
-        self.update_buffer(new_img)
-
-        return self.framebuffer, r * self.reward_scale, done, info
-
-    def update_buffer(self, img):
-        img = self.preproc_image(img)
-        offset = 3 if self.color else 1
-        if self.dim_order == 'tensorflow':
-            axis = -1
-            cropped_framebuffer = self.framebuffer[:, :, :-offset]
-        else:
-            axis = 0
-            cropped_framebuffer = self.framebuffer[:-offset, :, :]
-        self.framebuffer = np.concatenate([img, cropped_framebuffer], axis=axis)
-
-    def preproc_image(self, img):
-        """what happens to the observation"""
-        img = self.crop(img)
-        img = cv2.resize(img / 255, self.img_size, interpolation=cv2.INTER_LINEAR)
-        if not self.color:
-            img = img.mean(-1, keepdims=True)
-        if self.dim_order != 'tensorflow':
-            img = img.transpose([2, 0, 1])  # [h, w, c] to [c, h, w]
-        return img
-
-import gym
-
-def crop_func(img):
-  return img[60:-30, 15:]
-
-def make_env():
-    env = gym.make("KungFuMasterDeterministic-v0")
-    env = PreprocessAtari(env, height=80, width=80,
-                          crop=crop_func,
-                          color=False, n_frames=1)
-    return env
+from preprocess_atari import make_env
 
 import torch
 import torch.nn as nn
@@ -117,11 +52,11 @@ class AC_Net(nn.Module):
 
         self.flatten = Flatten()
 
-        self.hid = nn.Linear(self.feature_size(), 256)
-        self.rnn = nn.LSTMCell(256, 256)
+        self.hid = nn.Linear(self.feature_size(), 512)
+        self.rnn = nn.LSTMCell(512, 512)
 
-        self.logits = nn.Linear(256, n_actions)
-        self.state_value = nn.Linear(256, 1)
+        self.logits = nn.Linear(512, n_actions)
+        self.state_value = nn.Linear(512, 1)
 
     def feature_size(self):
         return self.conv(torch.zeros(1, *self.obs_shape)).view(1, -1).size(1)
@@ -148,7 +83,7 @@ class AC_Net(nn.Module):
 
     def get_initial_state(self, batch_size):
         """Return a list of agent memory states at game start. Each state is a np array of shape [batch_size, ...]"""
-        return torch.zeros((batch_size, 256)), torch.zeros((batch_size, 256))
+        return torch.zeros((batch_size, 512)), torch.zeros((batch_size, 512))
 
     def sample_actions(self, agent_outputs):
         """pick actions given numeric agent outputs (np arrays)"""
@@ -170,7 +105,6 @@ class AC_Net(nn.Module):
         is_done = torch.tensor(np.array(is_done, dtype=int), dtype=torch.float32)  # shape: [time]
         is_not_done = 1 - is_done
         rollout_length = rewards.shape[0] - 1
-
 
         # predict logits, probas and log-probas using an agent.
         memory = [m.detach() for m in prev_memory_states]
@@ -226,7 +160,6 @@ class AC_Net(nn.Module):
 
             cumulative_returns = G_t = r_t + gamma * cumulative_returns
 
-
             # Compute temporal difference error (MSE for V(s))
             value_loss += (r_t + gamma * V_next * is_not_done[t] - V_t)**2
 
@@ -237,15 +170,13 @@ class AC_Net(nn.Module):
             # compute policy pseudo-loss aka -J_hat.
             J_hat += logpi_a_s_t * advantage
 
-
-
         # regularize with entropy
         entropy_reg = -(logprobas * probas).sum(-1).mean()
 
         # add-up three loss components and average over time
         loss = -J_hat / rollout_length +\
             value_loss / rollout_length +\
-              -0.01 * entropy_reg
+              -0.02 * entropy_reg
 
         return loss
 
@@ -274,10 +205,6 @@ def evaluate(agent, env, n_games=1):
         game_rewards.append(total_reward)
     return game_rewards
 
-GAMMA = 0.99
-MAX_EP = 150000
-EVAL_FREQ = 150
-
 class SharedAdam(torch.optim.Adam):
     def __init__(self, params, lr=1e-5):
         super(SharedAdam, self).__init__(params, lr=lr)
@@ -300,7 +227,7 @@ class Worker(mp.Process):
       #self.g_ep, self.g_ep_r, self.res_queue = global_ep, global_ep_r, res_queue
       self.opt = opt
       self.master = master
-      self.env = make_env()
+      self.env = make_env(ENV_NAME)
       obs_shape = env.observation_space.shape
       n_actions = env.action_space.n
       self.lnet = AC_Net(obs_shape, n_actions)
@@ -360,7 +287,7 @@ class Worker(mp.Process):
         while iter < MAX_EP:
             self._sync_local_with_global()
             if iter % EVAL_FREQ == 0 and self.process_id == 0:
-                reward = np.mean(evaluate(self.master, make_env(), n_games=3))
+                reward = np.mean(evaluate(self.master, make_env(ENV_NAME), n_games=3))
                 torch.save(self.master.state_dict(), 'a3c.weights')
                 print(iter, reward)
             obs, actions, rewards, is_done = self.work(20)
@@ -369,13 +296,12 @@ class Worker(mp.Process):
 
 if __name__ == "__main__":
 
-    env = make_env()
+    env = make_env(ENV_NAME)
     obs_shape = env.observation_space.shape
     n_actions = env.action_space.n
 
     master = AC_Net(obs_shape, n_actions)
     master.share_memory()
-    print(master.feature_size())
     shared_opt = SharedAdam(master.parameters())
 
     print('Workers count:', mp.cpu_count())
