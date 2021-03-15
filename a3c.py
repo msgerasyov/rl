@@ -213,7 +213,7 @@ class AC_Net(nn.Module):
             cumulative_returns = G_t = r_t + gamma * cumulative_returns * is_alive
 
             # Compute temporal difference error (MSE for V(s))
-            value_loss += (r_t + gamma * V_next * is_not_done[t] - V_t)**2
+            value_loss += (r_t + gamma * V_next * is_alive - V_t)**2
 
             # compute advantage A(s_t, a_t) using cumulative returns and V(s_t) as baseline
             advantage = cumulative_returns - V_t
@@ -245,14 +245,14 @@ def evaluate(agent, env, n_games=1):
 
         total_reward = 0
         while True:
-            new_memories, readouts = agent.step(
+            (h, c), (l, s) = agent.step(
                 prev_memories, observation[None, ...])
-            action = agent.sample_actions(readouts)
+            action = agent.sample_actions((l.detach(), s.detach()))
 
             observation, reward, done, info = env.step(action[0])
 
             total_reward += reward
-            prev_memories = new_memories
+            prev_memories = (h.detach(), c.detach())
             if done:
                 break
 
@@ -344,7 +344,7 @@ class Worker(mp.Process):
                 reward = np.mean(evaluate(self.master, make_env(), n_games=1))
                 torch.save(self.master.state_dict(), 'a3c.weights')
                 print(iter, reward)
-            obs, actions, rewards, is_done, logits, state_values = self.work(20)
+            obs, actions, rewards, is_done, logits, state_values = self.work(30)
             self.train(self.opt, obs, actions, rewards, is_done, logits, state_values)
             iter += 1
 
