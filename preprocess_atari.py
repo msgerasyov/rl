@@ -13,8 +13,8 @@ class PreprocessAtariObs(ObservationWrapper):
         ObservationWrapper.__init__(self, env)
 
         self.color = color
-        self.img_size = (1, 80, 105)
-        self.observation_space = Box(0.0, 1.0, (1, 105, 80))
+        self.img_size = (1, 42, 42)
+        self.observation_space = Box(0.0, 1.0, (1, 42, 42))
 
     def _to_gray_scale(self, rgb_image, channel_weights=[0.8, 0.1, 0.1]):
         img_gray = np.zeros(rgb_image.shape[:-1], dtype='float32')
@@ -25,6 +25,7 @@ class PreprocessAtariObs(ObservationWrapper):
     def observation(self, img):
         """what happens to each observation"""
 
+        img = img[60:-30, 15:]
         img = cv2.resize(img, self.img_size[1:])
         if not self.color:
             img = img.mean(-1, keepdims=True)
@@ -118,7 +119,11 @@ class FrameBuffer(gym.Wrapper):
         self.framebuffer = np.concatenate(
             [img, cropped_framebuffer], axis=axis)
 
-def PrimaryAtariWrap(env, clip_rewards=True):
+
+def make_env(env_name, n_frames=1, clip_rewards=False, seed=None):
+    env = gym.make(env_name)  # create raw env
+    if seed is not None:
+        env.seed(seed)
 
     env = EpisodicLifeEnv(env)
 
@@ -127,13 +132,6 @@ def PrimaryAtariWrap(env, clip_rewards=True):
 
     env = PreprocessAtariObs(env)
 
-    return env
-
-def make_env(env_name, n_frames=1, clip_rewards=False, seed=None):
-    env = gym.make(env_name)  # create raw env
-    if seed is not None:
-        env.seed(seed)
-    env = PrimaryAtariWrap(env, clip_rewards)
     if n_frames > 1:
-        env = FrameBuffer(env, n_frames=4, dim_order='pytorch')
+        env = FrameBuffer(env, n_frames=n_frames, dim_order='pytorch')
     return env
