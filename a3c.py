@@ -163,7 +163,7 @@ class AC_Net(nn.Module):
         """ like forward, but obs_t is a numpy array """
         obs_t = torch.tensor(np.asarray(obs_t), dtype=torch.float32)
         (h, c), (l, s) = self.forward(prev_state, obs_t)
-        return (h.detach(), c.detach()), (l, s)
+        return (h, c), (l, s)
 
     def compute_rollout_loss(self, states, actions, rewards, is_done,
                             logits, state_values, gamma=0.99):
@@ -236,7 +236,7 @@ class AC_Net(nn.Module):
 
 def evaluate(agent, env, n_games=1):
     """Plays an entire game start to end, returns session rewards."""
-
+    
     game_rewards = []
     for _ in range(n_games):
         # initial observation and memory
@@ -292,6 +292,8 @@ class Worker(mp.Process):
         self.lnet.load_state_dict(self.master.state_dict())
 
     def work(self, n_iter):
+      self.prev_memories = (self.prev_memories[0].detach(),
+                            self.prev_memories[1].detach())
       obs = []
       actions = []
       rewards = []
