@@ -15,7 +15,7 @@ import os
 os.environ["OMP_NUM_THREADS"] = "1"
 MAX_EP = 150000
 EVAL_FREQ = 150
-LSTM_SIZE = 150
+LSTM_SIZE = 128
 
 
 import cv2
