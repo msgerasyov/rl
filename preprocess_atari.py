@@ -8,13 +8,14 @@ from gym.core import ObservationWrapper
 from gym.spaces import Box
 
 class PreprocessAtariObs(ObservationWrapper):
-    def __init__(self, env, color=False):
+    def __init__(self, env, crop_func=lambda img: img, color=False):
         """A gym wrapper that crops, scales image into the desired shapes and optionally grayscales it."""
         ObservationWrapper.__init__(self, env)
 
+        self.crop_func = crop_func
         self.color = color
-        self.img_size = (1, 42, 42)
-        self.observation_space = Box(0.0, 1.0, (1, 42, 42))
+        self.img_size = (1, 80, 80)
+        self.observation_space = Box(0.0, 1.0, self.img_size)
 
     def _to_gray_scale(self, rgb_image, channel_weights=[0.8, 0.1, 0.1]):
         img_gray = np.zeros(rgb_image.shape[:-1], dtype='float32')
@@ -25,7 +26,7 @@ class PreprocessAtariObs(ObservationWrapper):
     def observation(self, img):
         """what happens to each observation"""
 
-        img = img[60:-30, 15:]
+        img = self.crop_func(img)
         img = cv2.resize(img, self.img_size[1:])
         if not self.color:
             img = img.mean(-1, keepdims=True)
@@ -120,7 +121,7 @@ class FrameBuffer(gym.Wrapper):
             [img, cropped_framebuffer], axis=axis)
 
 
-def make_env(env_name, n_frames=1, clip_rewards=False, seed=None):
+def make_env(env_name, crop_func = lambda img: img, n_frames=1, clip_rewards=False, seed=None):
     env = gym.make(env_name)  # create raw env
     if seed is not None:
         env.seed(seed)
@@ -130,7 +131,7 @@ def make_env(env_name, n_frames=1, clip_rewards=False, seed=None):
     if clip_rewards:
         env = ClipRewardEnv(env)
 
-    env = PreprocessAtariObs(env)
+    env = PreprocessAtariObs(env, crop_func=crop_func)
 
     if n_frames > 1:
         env = FrameBuffer(env, n_frames=n_frames, dim_order='pytorch')
