@@ -147,7 +147,7 @@ class AC_Net(nn.Module):
         return loss
 
 class SharedAdam(torch.optim.Adam):
-    def __init__(self, params, lr=1e-5):
+    def __init__(self, params, lr=1e-4):
         super(SharedAdam, self).__init__(params, lr=lr)
         # State initialization
         for group in self.param_groups:
