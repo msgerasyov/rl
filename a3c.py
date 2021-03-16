@@ -12,7 +12,8 @@ MAX_EP = 1000000
 N_WORKERS = 16
 EVAL_FREQ = 5000
 LSTM_SIZE = 256
-ENV_NAME = "SpaceInvadersDeterministic-v4"
+MAX_GRAD = 40
+ENV_NAME = "BreakoutDeterministic-v4"
 
 import cv2
 import numpy as np
@@ -222,6 +223,7 @@ class Worker(mp.Process):
                                             prev_memory_states, gamma)
       opt.zero_grad()
       loss.backward()
+      torch.nn.utils.clip_grad_norm_(self.lnet.parameters(), MAX_GRAD)
       for lp, mp in zip(self.lnet.parameters(), self.master.parameters()):
           mp._grad = lp.grad
       opt.step()
