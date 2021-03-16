@@ -92,6 +92,6 @@ def make_env(env_name, crop = lambda img: img, n_frames=1, clip_rewards=False, s
     if clip_rewards:
         env = ClipRewardEnv(env)
 
-    env = PreprocessAtari(env, height=42, width=42, crop=crop, n_frames=n_frames)
+    env = PreprocessAtari(env, height=80, width=80, crop=crop, n_frames=n_frames)
 
     return env
