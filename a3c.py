@@ -4,9 +4,11 @@ import numpy as np
 import sys
 import time
 import os
+import pickle
 
 os.environ["OMP_NUM_THREADS"] = "1"
 MAX_EP = 10e6
+N_WORKERS = 16
 EVAL_FREQ = 5000
 LSTM_SIZE = 256
 ENV_NAME = "PongDeterministic-v0"
@@ -97,8 +99,6 @@ class AC_Net(nn.Module):
         states = torch.tensor(np.asarray(states), dtype=torch.float32) # shape: [time, c, h, w]
         actions = torch.tensor(np.array(actions), dtype=torch.int64)  # shape: [time]
         rewards = torch.tensor(np.array(rewards), dtype=torch.float32)  # shape: [time]
-        #is_done = torch.tensor(np.array(is_done, dtype=int), dtype=torch.float32)  # shape: [time]
-        #is_not_done = 1 - is_done
         rollout_length = rewards.shape[0]
 
         logits = torch.stack(logits, dim=1)
@@ -120,14 +120,9 @@ class AC_Net(nn.Module):
 
         for t in reversed(range(rollout_length)):
             r_t = rewards[t]                                # current rewards
-            # current state values
             V_t = state_values[t]
             V_next = state_values[t+1].detach()           # next state values
-            #is_alive = is_not_done[t]
-            # log-probability of a_t in s_t
             logpi_a_s_t = logprobas_for_actions[t]
-
-            # update G_t = r_t + gamma * G_{t+1} as we did in week6 reinforce
 
             cumulative_returns = G_t = r_t + gamma * cumulative_returns
 
@@ -152,7 +147,7 @@ class AC_Net(nn.Module):
         return loss
 
 class SharedAdam(torch.optim.Adam):
-    def __init__(self, params, lr=1e-4):
+    def __init__(self, params, lr=1e-5):
         super(SharedAdam, self).__init__(params, lr=lr)
         # State initialization
         for group in self.param_groups:
@@ -170,7 +165,6 @@ class Worker(mp.Process):
     def __init__(self, master, opt, process_id):
         super(Worker, self).__init__()
         self.process_id = process_id
-        #self.g_ep, self.g_ep_r, self.res_queue = global_ep, global_ep_r, res_queue
         self.opt = opt
         self.master = master
         self.env = make_env(ENV_NAME, crop=crop_func)
@@ -230,8 +224,6 @@ class Worker(mp.Process):
           mp._grad = lp.grad
       opt.step()
 
-      #self.data[0] = dumps(self.master.state_dict())
-
     def run(self):
         time.sleep(int(np.random.rand() * (self.process_id + 5)))
         while self.master.train_step.value < self.master.steps:
@@ -244,7 +236,6 @@ class Tester(mp.Process):
     def __init__(self, master, process_id, eval_freq, n_games=1):
         super(Tester, self).__init__()
         self.process_id = process_id
-        #self.g_ep, self.g_ep_r, self.res_queue = global_ep, global_ep_r, res_queue
         self.master = master
         self.env = make_env(ENV_NAME, crop=crop_func)
         obs_shape = env.observation_space.shape
@@ -306,6 +297,10 @@ class Tester(mp.Process):
                 self.rewards.append((eval_step, mean_reward))
                 self.entropy.append((eval_step, entropy_reg))
                 self.step += self.eval_freq
+                with open('a3c-{0}_rewards.pkl'.format(ENV_NAME[0:5]), 'wb') as f:
+                    pickle.dump(self.rewards, f)
+                with open('a3c-{0}_entropy.pkl'.format(ENV_NAME[0:5]), 'wb') as f:
+                    pickle.dump(self.entropy, f)
 
 
 
@@ -318,13 +313,16 @@ if __name__ == "__main__":
     master = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
     master.steps = MAX_EP
     master.train_step = mp.Value('l', 0)
+    if os.path.exists('a3c-{0}.weights'.format(ENV_NAME[0:5])):
+        master.load_state_dict(torch.load('a3c-{0}.weights'.format(ENV_NAME[0:5])))
+        print('Successfully loaded weights')
     master.share_memory()
     shared_opt = SharedAdam(master.parameters())
 
-    print('Workers count:', mp.cpu_count() - 1)
+    print('Workers count:', N_WORKERS)
 
     # parallel training
-    processes = [Worker(master, shared_opt, i) for i in range(mp.cpu_count())]
+    processes = [Worker(master, shared_opt, i) for i in range(N_WORKERS)]
     processes.append(Tester(master, len(processes), EVAL_FREQ, n_games=3))
     for p in processes:
       p.start()
