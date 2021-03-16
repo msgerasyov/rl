@@ -5,13 +5,14 @@ import sys
 import time
 import os
 import pickle
+import math
 
 os.environ["OMP_NUM_THREADS"] = "1"
-MAX_EP = 10e6
+MAX_EP = 1000000
 N_WORKERS = 16
 EVAL_FREQ = 5000
 LSTM_SIZE = 256
-ENV_NAME = "PongDeterministic-v4"
+ENV_NAME = "SpaceInvadersDeterministic-v4"
 
 import cv2
 import numpy as np
@@ -141,7 +142,7 @@ class AC_Net(nn.Module):
 
         # add-up three loss components and average over time
         loss = -J_hat / rollout_length +\
-            0.5 * value_loss / rollout_length +\
+            value_loss / rollout_length +\
               -0.01 * entropy_reg
 
         return loss
@@ -160,6 +161,7 @@ class SharedAdam(torch.optim.Adam):
                 # share in memory
                 state['exp_avg'].share_memory_()
                 state['exp_avg_sq'].share_memory_()
+
 
 class Worker(mp.Process):
     def __init__(self, master, opt, process_id):
@@ -323,7 +325,7 @@ if __name__ == "__main__":
 
     # parallel training
     processes = [Worker(master, shared_opt, i) for i in range(N_WORKERS)]
-    processes.append(Tester(master, len(processes), EVAL_FREQ, n_games=3))
+    processes.append(Tester(master, len(processes), EVAL_FREQ, n_games=5))
     for p in processes:
       p.start()
     for p in processes:
