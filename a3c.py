@@ -9,7 +9,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 MAX_EP = 10e6
 EVAL_FREQ = 5000
 LSTM_SIZE = 128
-ENV_NAME = "KungFuMasterDeterministic-v0"
+ENV_NAME = "PongDeterministic-v0"
 
 import cv2
 import numpy as np
@@ -19,7 +19,7 @@ from gym.spaces.box import Box
 from preprocess_atari import make_env
 
 def crop_func(img):
-  return img[60:-30, 5:]
+  return img[25:200, :]
 
 import torch
 import torch.nn as nn
@@ -91,14 +91,14 @@ class AC_Net(nn.Module):
         (h, c), (l, s) = self.forward(prev_state, obs_t)
         return (h, c), (l, s)
 
-    def compute_rollout_loss(self, states, actions, rewards, is_done,
+    def compute_rollout_loss(self, states, actions, rewards,
                             logits, state_values, gamma=0.99):
 
         states = torch.tensor(np.asarray(states), dtype=torch.float32) # shape: [time, c, h, w]
         actions = torch.tensor(np.array(actions), dtype=torch.int64)  # shape: [time]
         rewards = torch.tensor(np.array(rewards), dtype=torch.float32)  # shape: [time]
-        is_done = torch.tensor(np.array(is_done, dtype=int), dtype=torch.float32)  # shape: [time]
-        is_not_done = 1 - is_done
+        #is_done = torch.tensor(np.array(is_done, dtype=int), dtype=torch.float32)  # shape: [time]
+        #is_not_done = 1 - is_done
         rollout_length = rewards.shape[0]
 
         logits = torch.stack(logits, dim=1)
@@ -123,16 +123,16 @@ class AC_Net(nn.Module):
             # current state values
             V_t = state_values[t]
             V_next = state_values[t+1].detach()           # next state values
-            is_alive = is_not_done[t]
+            #is_alive = is_not_done[t]
             # log-probability of a_t in s_t
             logpi_a_s_t = logprobas_for_actions[t]
 
             # update G_t = r_t + gamma * G_{t+1} as we did in week6 reinforce
 
-            cumulative_returns = G_t = r_t + gamma * cumulative_returns * is_alive
+            cumulative_returns = G_t = r_t + gamma * cumulative_returns
 
             # Compute temporal difference error (MSE for V(s))
-            value_loss += (r_t + gamma * V_next * is_alive - V_t)**2
+            value_loss += (r_t + gamma * V_next - V_t)**2
 
             # compute advantage A(s_t, a_t) using cumulative returns and V(s_t) as baseline
             advantage = cumulative_returns - V_t
@@ -147,7 +147,7 @@ class AC_Net(nn.Module):
         # add-up three loss components and average over time
         loss = -J_hat / rollout_length +\
             0.5 * value_loss / rollout_length +\
-              -0.001 * entropy_reg
+              -0.01 * entropy_reg
 
         return loss
 
@@ -189,7 +189,6 @@ class Worker(mp.Process):
         obs = []
         actions = []
         rewards = []
-        is_done = []
         logits = []
         state_values = []
 
@@ -199,26 +198,27 @@ class Worker(mp.Process):
             action = self.lnet.sample_actions((logits_t, value_t))
 
             new_observation, reward, done, _ = self.env.step(action[0])
-            if done:
-              new_observation = self.env.reset()
-              new_memories = self.lnet.get_initial_state(1)
 
             obs.append(self.prev_observation)
             actions.append(action[0])
             rewards.append(reward)
-            is_done.append(done)
             logits.append(logits_t)
             state_values.append(value_t)
 
+            if done:
+              new_observation = self.env.reset()
+              new_memories = self.lnet.get_initial_state(1)
+              break
 
         self.prev_memories = new_memories
         self.prev_observation = new_observation
 
         _, (logits_t, value_t) = self.lnet.step(
             self.prev_memories, self.prev_observation[None, ...])
-        state_values.append(value_t)
 
-        return obs, actions, rewards, is_done, logits, state_values
+        state_values.append(value_t * (1 - done))
+
+        return obs, actions, rewards, logits, state_values
 
     def train(self, opt, states, actions, rewards, is_done,
               prev_memory_states, gamma=0.99):
@@ -236,12 +236,8 @@ class Worker(mp.Process):
         time.sleep(int(np.random.rand() * (self.process_id + 5)))
         while self.master.train_step.value < self.master.steps:
             self._sync_local_with_global()
-            #if iter % EVAL_FREQ == 0 and self.process_id == 0:
-                #reward = np.mean(evaluate(self.master, make_env(ENV_NAME, crop=crop_func), n_games=1))
-                #torch.save(self.master.state_dict(), 'a3c-{0}.weights'.format(ENV_NAME[0:5]))
-                #print(iter, reward)
-            obs, actions, rewards, is_done, logits, state_values = self.work(20)
-            self.train(self.opt, obs, actions, rewards, is_done, logits, state_values)
+            obs, actions, rewards, logits, state_values = self.work(20)
+            self.train(self.opt, obs, actions, rewards, logits, state_values)
             self.master.train_step.value += 1
 
 class Tester(mp.Process):
@@ -299,7 +295,6 @@ class Tester(mp.Process):
         return np.mean(game_rewards), entropy_reg.item()
 
     def run(self):
-        #time.sleep(int(np.random.rand() * 3))
         while self.master.train_step.value < self.master.steps:
             if self.master.train_step.value >= self.step:
                 eval_step = self.master.train_step.value
