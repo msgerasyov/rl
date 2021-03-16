@@ -147,7 +147,7 @@ class AC_Net(nn.Module):
         # add-up three loss components and average over time
         loss = -J_hat / rollout_length +\
             0.5 * value_loss / rollout_length +\
-              -0.01 * entropy_reg
+              -0.005 * entropy_reg
 
         return loss
 
@@ -330,7 +330,7 @@ if __name__ == "__main__":
 
     # parallel training
     processes = [Worker(master, shared_opt, i) for i in range(mp.cpu_count())]
-    processes.append(Tester(master, len(processes), EVAL_FREQ, n_games=1))
+    processes.append(Tester(master, len(processes), EVAL_FREQ, n_games=3))
     for p in processes:
       p.start()
     for p in processes:
