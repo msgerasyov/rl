@@ -8,7 +8,7 @@ import os
 os.environ["OMP_NUM_THREADS"] = "1"
 MAX_EP = 10e6
 EVAL_FREQ = 5000
-LSTM_SIZE = 128
+LSTM_SIZE = 256
 ENV_NAME = "PongDeterministic-v0"
 
 import cv2
