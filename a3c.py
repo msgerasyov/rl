@@ -11,7 +11,7 @@ MAX_EP = 10e6
 N_WORKERS = 16
 EVAL_FREQ = 5000
 LSTM_SIZE = 256
-ENV_NAME = "PongDeterministic-v0"
+ENV_NAME = "PongDeterministic-v4"
 
 import cv2
 import numpy as np
@@ -51,8 +51,8 @@ class AC_Net(nn.Module):
 
         self.flatten = Flatten()
 
-        self.hid = nn.Linear(self.feature_size(), self.lstm_size)
-        self.rnn = nn.LSTMCell(self.lstm_size, self.lstm_size)
+        #self.hid = nn.Linear(self.feature_size(), self.lstm_size)
+        self.rnn = nn.LSTMCell(self.feature_size(), self.lstm_size)
 
         self.logits = nn.Linear(self.lstm_size, n_actions)
         self.state_value = nn.Linear(self.lstm_size, 1)
@@ -68,8 +68,8 @@ class AC_Net(nn.Module):
 
         h = self.conv(obs_t)
         h = self.flatten(h)
-        h = self.hid(h)
-        h = F.relu(h)
+        #h = self.hid(h)
+        #h = F.relu(h)
 
         new_state = h_new, c_new = self.rnn(h, prev_state)
         logits = self.logits(h_new)
