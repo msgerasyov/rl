@@ -7,7 +7,7 @@ import os
 
 os.environ["OMP_NUM_THREADS"] = "1"
 MAX_EP = 10e6
-EVAL_FREQ = 1000
+EVAL_FREQ = 500
 LSTM_SIZE = 128
 ENV_NAME = "KungFuMasterDeterministic-v0"
 
