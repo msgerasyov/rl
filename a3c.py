@@ -6,10 +6,10 @@ import time
 import os
 
 os.environ["OMP_NUM_THREADS"] = "1"
-MAX_EP = 150000
-EVAL_FREQ = 150
+MAX_EP = 10e6
+EVAL_FREQ = 1000
 LSTM_SIZE = 128
-ENV_NAME = "PongDeterministic-v4"
+ENV_NAME = "KungFuMasterDeterministic-v0"
 
 import cv2
 import numpy as np
@@ -19,7 +19,7 @@ from gym.spaces.box import Box
 from preprocess_atari import make_env
 
 def crop_func(img):
-  return img[25:200, :]
+  return img[60:-30, 5:]
 
 import torch
 import torch.nn as nn
@@ -99,7 +99,7 @@ class AC_Net(nn.Module):
         rewards = torch.tensor(np.array(rewards), dtype=torch.float32)  # shape: [time]
         is_done = torch.tensor(np.array(is_done, dtype=int), dtype=torch.float32)  # shape: [time]
         is_not_done = 1 - is_done
-        rollout_length = rewards.shape[0] - 1
+        rollout_length = rewards.shape[0]
 
         logits = torch.stack(logits, dim=1)
         logits = logits.view(logits.size(1), -1)
@@ -141,42 +141,15 @@ class AC_Net(nn.Module):
             # compute policy pseudo-loss aka -J_hat.
             J_hat += logpi_a_s_t * advantage
 
-
-
         # regularize with entropy
         entropy_reg = -(logprobas * probas).sum(-1).mean()
 
         # add-up three loss components and average over time
         loss = -J_hat / rollout_length +\
-            value_loss / rollout_length +\
+            0.5 * value_loss / rollout_length +\
               -0.01 * entropy_reg
 
         return loss
-
-def evaluate(agent, env, n_games=1):
-    """Plays an entire game start to end, returns session rewards."""
-
-    game_rewards = []
-    for _ in range(n_games):
-        # initial observation and memory
-        observation = env.reset()
-        prev_memories = agent.get_initial_state(1)
-
-        total_reward = 0
-        while True:
-            (h, c), (l, s) = agent.step(
-                prev_memories, observation[None, ...])
-            action = agent.sample_actions((l.detach(), s.detach()))
-
-            observation, reward, done, info = env.step(action[0])
-
-            total_reward += reward
-            prev_memories = (h.detach(), c.detach())
-            if done:
-                break
-
-        game_rewards.append(total_reward)
-    return game_rewards
 
 class SharedAdam(torch.optim.Adam):
     def __init__(self, params, lr=1e-5):
@@ -195,52 +168,57 @@ class SharedAdam(torch.optim.Adam):
 
 class Worker(mp.Process):
     def __init__(self, master, opt, process_id):
-      super(Worker, self).__init__()
-      self.process_id = process_id
-      #self.g_ep, self.g_ep_r, self.res_queue = global_ep, global_ep_r, res_queue
-      self.opt = opt
-      self.master = master
-      self.env = make_env(ENV_NAME, crop=crop_func)
-      obs_shape = env.observation_space.shape
-      n_actions = env.action_space.n
-      self.lnet = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
-      self.prev_observation = self.env.reset()
-      self.prev_memories = self.lnet.get_initial_state(1)
+        super(Worker, self).__init__()
+        self.process_id = process_id
+        #self.g_ep, self.g_ep_r, self.res_queue = global_ep, global_ep_r, res_queue
+        self.opt = opt
+        self.master = master
+        self.env = make_env(ENV_NAME, crop=crop_func)
+        obs_shape = env.observation_space.shape
+        n_actions = env.action_space.n
+        self.lnet = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
+        self.prev_observation = self.env.reset()
+        self.prev_memories = self.lnet.get_initial_state(1)
 
     def _sync_local_with_global(self):
         self.lnet.load_state_dict(self.master.state_dict())
 
     def work(self, n_iter):
-      self.prev_memories = (self.prev_memories[0].detach(),
+        self.prev_memories = (self.prev_memories[0].detach(),
                             self.prev_memories[1].detach())
-      obs = []
-      actions = []
-      rewards = []
-      is_done = []
-      logits = []
-      state_values = []
+        obs = []
+        actions = []
+        rewards = []
+        is_done = []
+        logits = []
+        state_values = []
 
-      for _ in range(n_iter):
-        new_memories, (logits_t, value_t) = self.lnet.step(
-            self.prev_memories, self.prev_observation[None, ...])
-        action = self.lnet.sample_actions((logits_t, value_t))
+        for _ in range(n_iter):
+            new_memories, (logits_t, value_t) = self.lnet.step(
+                self.prev_memories, self.prev_observation[None, ...])
+            action = self.lnet.sample_actions((logits_t, value_t))
 
-        new_observation, reward, done, _ = self.env.step(action[0])
-        if done:
-          new_observation = self.env.reset()
-          new_memories = self.lnet.get_initial_state(1)
+            new_observation, reward, done, _ = self.env.step(action[0])
+            if done:
+              new_observation = self.env.reset()
+              new_memories = self.lnet.get_initial_state(1)
 
-        obs.append(self.prev_observation)
-        actions.append(action[0])
-        rewards.append(reward)
-        is_done.append(done)
-        logits.append(logits_t)
-        state_values.append(value_t)
+            obs.append(self.prev_observation)
+            actions.append(action[0])
+            rewards.append(reward)
+            is_done.append(done)
+            logits.append(logits_t)
+            state_values.append(value_t)
+
 
         self.prev_memories = new_memories
         self.prev_observation = new_observation
 
-      return obs, actions, rewards, is_done, logits, state_values
+        _, (logits_t, value_t) = self.lnet.step(
+            self.prev_memories, self.prev_observation[None, ...])
+        state_values.append(value_t)
+
+        return obs, actions, rewards, is_done, logits, state_values
 
     def train(self, opt, states, actions, rewards, is_done,
               prev_memory_states, gamma=0.99):
@@ -256,16 +234,85 @@ class Worker(mp.Process):
 
     def run(self):
         time.sleep(int(np.random.rand() * (self.process_id + 5)))
-        iter = 0
-        while iter < MAX_EP:
+        while self.master.train_step.value < self.master.steps:
             self._sync_local_with_global()
-            if iter % EVAL_FREQ == 0 and self.process_id == 0:
-                reward = np.mean(evaluate(self.master, make_env(ENV_NAME, crop=crop_func), n_games=1))
-                torch.save(self.master.state_dict(), 'a3c-{0}.weights'.format(ENV_NAME[0:5]))
-                print(iter, reward)
+            #if iter % EVAL_FREQ == 0 and self.process_id == 0:
+                #reward = np.mean(evaluate(self.master, make_env(ENV_NAME, crop=crop_func), n_games=1))
+                #torch.save(self.master.state_dict(), 'a3c-{0}.weights'.format(ENV_NAME[0:5]))
+                #print(iter, reward)
             obs, actions, rewards, is_done, logits, state_values = self.work(20)
             self.train(self.opt, obs, actions, rewards, is_done, logits, state_values)
-            iter += 1
+            self.master.train_step.value += 1
+
+class Tester(mp.Process):
+    def __init__(self, master, process_id, eval_freq, n_games=1):
+        super(Tester, self).__init__()
+        self.process_id = process_id
+        #self.g_ep, self.g_ep_r, self.res_queue = global_ep, global_ep_r, res_queue
+        self.master = master
+        self.env = make_env(ENV_NAME, crop=crop_func)
+        obs_shape = env.observation_space.shape
+        n_actions = env.action_space.n
+        self.lnet = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
+        self.prev_observation = self.env.reset()
+        self.prev_memories = self.lnet.get_initial_state(1)
+        self.rewards = []
+        self.entropy = []
+        self.n_games = n_games
+        self.eval_freq = eval_freq
+        self.step = 0
+
+    def _sync_local_with_global(self):
+        self.lnet.load_state_dict(self.master.state_dict())
+
+    def evaluate(self):
+        """Plays an entire game start to end, returns session rewards."""
+
+        game_rewards = []
+        logits = []
+        for _ in range(self.n_games):
+            # initial observation and memory
+            observation = self.env.reset()
+            prev_memories = self.lnet.get_initial_state(1)
+
+            total_reward = 0
+            while True:
+                new_memories, (logits_t, value_t) = self.lnet.step(
+                    prev_memories, observation[None, ...])
+                action = self.lnet.sample_actions((logits_t, value_t))
+
+                observation, reward, done, info = self.env.step(action[0])
+
+                logits.append(logits_t)
+                total_reward += reward
+                prev_memories = new_memories
+                if done:
+                    break
+
+            game_rewards.append(total_reward)
+
+        logits = torch.stack(logits, dim=1)
+        logits = logits.view(logits.size(1), -1)
+        probas = F.softmax(logits, dim=1)
+        logprobas = F.log_softmax(logits, dim=1)
+        entropy_reg = -(logprobas * probas).sum(-1).mean()
+        return np.mean(game_rewards), entropy_reg.item()
+
+    def run(self):
+        #time.sleep(int(np.random.rand() * 3))
+        while self.master.train_step.value < self.master.steps:
+            if self.master.train_step.value >= self.step:
+                eval_step = self.master.train_step.value
+                self._sync_local_with_global()
+                torch.save(self.lnet.state_dict(),
+                            'a3c-{0}.weights'.format(ENV_NAME[0:5]))
+                mean_reward, entropy_reg = self.evaluate()
+                print(eval_step, "reward:", mean_reward, "entropy:", entropy_reg)
+                self.rewards.append((eval_step, mean_reward))
+                self.entropy.append((eval_step, entropy_reg))
+                self.step += self.eval_freq
+
+
 
 if __name__ == "__main__":
 
@@ -274,14 +321,17 @@ if __name__ == "__main__":
     n_actions = env.action_space.n
 
     master = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
+    master.steps = MAX_EP
+    master.train_step = mp.Value('l', 0)
     master.share_memory()
     shared_opt = SharedAdam(master.parameters())
 
-    print('Workers count:', mp.cpu_count())
+    print('Workers count:', mp.cpu_count() - 1)
 
     # parallel training
-    workers = [Worker(master, shared_opt, i) for i in range(mp.cpu_count())]
-    for worker in workers:
-      worker.start()
-    for worker in workers:
-      worker.join()
+    processes = [Worker(master, shared_opt, i) for i in range(mp.cpu_count())]
+    processes.append(Tester(master, len(processes), EVAL_FREQ, n_games=1))
+    for p in processes:
+      p.start()
+    for p in processes:
+      p.join()
