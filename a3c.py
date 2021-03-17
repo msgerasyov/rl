@@ -8,10 +8,10 @@ import pickle
 import math
 
 os.environ["OMP_NUM_THREADS"] = "1"
-MAX_EP = 1000000
-N_WORKERS = 16
-EVAL_FREQ = 5000
-LSTM_SIZE = 256
+MAX_EP = 10000
+N_WORKERS = 4
+EVAL_FREQ = 150
+LSTM_SIZE = 128
 MAX_GRAD = 40
 ENV_NAME = "BreakoutDeterministic-v4"
 
@@ -163,6 +163,7 @@ class SharedAdam(torch.optim.Adam):
                 state['exp_avg'].share_memory_()
                 state['exp_avg_sq'].share_memory_()
 
+
 class Worker(mp.Process):
     def __init__(self, master, opt, process_id):
         super(Worker, self).__init__()
@@ -215,6 +216,25 @@ class Worker(mp.Process):
         state_values.append(value_t * (1 - done))
 
         return obs, actions, rewards, logits, state_values
+
+    def train(self, opt, states, actions, rewards, is_done,
+              prev_memory_states, gamma=0.99):
+      loss = self.lnet.compute_rollout_loss(states, actions, rewards, is_done,
+                                            prev_memory_states, gamma)
+      opt.zero_grad()
+      loss.backward()
+      torch.nn.utils.clip_grad_norm_(self.lnet.parameters(), MAX_GRAD)
+      for lp, mp in zip(self.lnet.parameters(), self.master.parameters()):
+          mp._grad = lp.grad
+      opt.step()
+
+    def run(self):
+        time.sleep(int(np.random.rand() * (self.process_id + 5)))
+        while self.master.train_step.value < self.master.steps:
+            self._sync_local_with_global()
+            obs, actions, rewards, logits, state_values = self.work(20)
+            self.train(self.opt, obs, actions, rewards, logits, state_values)
+            self.master.train_step.value += 1
 
 class Tester(mp.Process):
     def __init__(self, master, process_id, eval_freq, n_games=1):
