@@ -8,10 +8,10 @@ import pickle
 import math
 
 os.environ["OMP_NUM_THREADS"] = "1"
-MAX_EP = 10000
-N_WORKERS = 4
-EVAL_FREQ = 150
-LSTM_SIZE = 128
+MAX_EP = 1000000
+N_WORKERS = 16
+EVAL_FREQ = 1000
+LSTM_SIZE = 256
 MAX_GRAD = 40
 ENV_NAME = "BreakoutDeterministic-v4"
 
