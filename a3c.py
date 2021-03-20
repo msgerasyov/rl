@@ -8,12 +8,13 @@ import pickle
 import math
 
 os.environ["OMP_NUM_THREADS"] = "1"
-MAX_EP = 1000000
+MAX_EP = 4000000
 N_WORKERS = 16
-EVAL_FREQ = 1000
-LSTM_SIZE = 256
+EVAL_FREQ = 5000
+LSTM_SIZE = 128
 MAX_GRAD = 40
-ENV_NAME = "BreakoutDeterministic-v4"
+SCALE = 0.01
+ENV_NAME = "KungFuMasterDeterministic-v4"
 
 import cv2
 import numpy as np
@@ -23,7 +24,7 @@ from gym.spaces.box import Box
 from preprocess_atari import make_env
 
 def crop_func(img):
-  return img[25:200, :]
+  return img[60:-30, 15:]
 
 import torch
 import torch.nn as nn
@@ -53,8 +54,7 @@ class AC_Net(nn.Module):
 
         self.flatten = Flatten()
 
-        self.hid = nn.Linear(self.feature_size(), self.lstm_size)
-        self.rnn = nn.LSTMCell(self.lstm_size, self.lstm_size)
+        self.rnn = nn.LSTMCell(self.feature_size(), self.lstm_size)
 
         self.logits = nn.Linear(self.lstm_size, n_actions)
         self.state_value = nn.Linear(self.lstm_size, 1)
@@ -70,8 +70,6 @@ class AC_Net(nn.Module):
 
         h = self.conv(obs_t)
         h = self.flatten(h)
-        h = self.hid(h)
-        h = F.relu(h)
 
         new_state = h_new, c_new = self.rnn(h, prev_state)
         logits = self.logits(h_new)
@@ -170,7 +168,7 @@ class Worker(mp.Process):
         self.process_id = process_id
         self.opt = opt
         self.master = master
-        self.env = make_env(ENV_NAME, crop=crop_func)
+        self.env = make_env(ENV_NAME, SCALE, crop=crop_func)
         obs_shape = env.observation_space.shape
         n_actions = env.action_space.n
         self.lnet = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
@@ -241,7 +239,7 @@ class Tester(mp.Process):
         super(Tester, self).__init__()
         self.process_id = process_id
         self.master = master
-        self.env = make_env(ENV_NAME, crop=crop_func)
+        self.env = make_env(ENV_NAME, 1, crop=crop_func)
         obs_shape = env.observation_space.shape
         n_actions = env.action_space.n
         self.lnet = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
@@ -310,7 +308,7 @@ class Tester(mp.Process):
 
 if __name__ == "__main__":
 
-    env = make_env(ENV_NAME, crop = crop_func)
+    env = make_env(ENV_NAME, SCALE, crop = crop_func)
     obs_shape = env.observation_space.shape
     n_actions = env.action_space.n
 
@@ -327,7 +325,7 @@ if __name__ == "__main__":
 
     # parallel training
     processes = [Worker(master, shared_opt, i) for i in range(N_WORKERS)]
-    processes.append(Tester(master, len(processes), EVAL_FREQ, n_games=5))
+    processes.append(Tester(master, len(processes), EVAL_FREQ, n_games=1))
     for p in processes:
       p.start()
     for p in processes:
