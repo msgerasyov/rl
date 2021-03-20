@@ -84,14 +84,12 @@ class ClipRewardEnv(gym.RewardWrapper):
         self.lives = self.env.unwrapped.ale.lives()
         return obs
 
-def make_env(env_name, crop = lambda img: img, n_frames=1, clip_rewards=False, seed=None):
+def make_env(env_name, reward_scale, crop = lambda img: img, n_frames=1, seed=None):
     env = gym.make(env_name)  # create raw env
     if seed is not None:
         env.seed(seed)
 
-    if clip_rewards:
-        env = ClipRewardEnv(env)
-
-    env = PreprocessAtari(env, height=80, width=80, crop=crop, n_frames=n_frames)
+    env = PreprocessAtari(env, height=80, width=80, crop=crop,
+                            n_frames=n_frames, reward_scale=reward_scale)
 
     return env
