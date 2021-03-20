@@ -201,15 +201,15 @@ class Worker(mp.Process):
             state_values.append(value_t)
 
             if done:
-              new_observation = self.env.reset()
-              new_memories = self.lnet.get_initial_state(1)
+              self.prev_observation = self.env.reset()
+              self.prev_memories = self.lnet.get_initial_state(1)
               break
 
             self.prev_memories = new_memories
             self.prev_observation = new_observation
 
         _, (logits_t, value_t) = self.lnet.step(
-            new_memories, new_observation[None, ...])
+            self.prev_memories, self.prev_observation[None, ...])
 
         state_values.append(value_t * (1 - done))
 
