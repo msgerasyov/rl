@@ -63,27 +63,6 @@ class PreprocessAtari(Wrapper):
             img = img.transpose([2, 0, 1])  # [h, w, c] to [c, h, w]
         return img
 
-class ClipRewardEnv(gym.RewardWrapper):
-    def __init__(self, env):
-        gym.RewardWrapper.__init__(self, env)
-
-    def reward(self, reward):
-        """Bin reward to {+1, 0, -1} by its sign."""
-        return np.sign(reward)
-
-    def reset(self, **kwargs):
-        """Reset only when lives are exhausted.
-        This way all states are still reachable even though lives are episodic,
-        and the learner need not know about any of this behind-the-scenes.
-        """
-        if self.was_real_done:
-            obs = self.env.reset(**kwargs)
-        else:
-            # no-op step to advance from terminal/lost life state
-            obs, _, _, _ = self.env.step(0)
-        self.lives = self.env.unwrapped.ale.lives()
-        return obs
-
 def make_env(env_name, reward_scale, crop = lambda img: img, n_frames=1, seed=None):
     env = gym.make(env_name)  # create raw env
     if seed is not None:
