@@ -35,6 +35,10 @@ class Flatten(nn.Module):
     def forward(self, input):
         return input.view(input.size(0), -1)
 
+class Flatten(nn.Module):
+    def forward(self, input):
+        return input.view(input.size(0), -1)
+
 class AC_Net(nn.Module):
     def __init__(self, obs_shape, n_actions, lstm_size=128):
         """A simple actor-critic agent"""
@@ -93,10 +97,9 @@ class AC_Net(nn.Module):
         (h, c), (l, s) = self.forward(prev_state, obs_t)
         return (h, c), (l, s)
 
-    def compute_rollout_loss(self, states, actions, rewards,
+    def compute_rollout_loss(self, actions, rewards,
                             logits, state_values, gamma=0.99):
 
-        states = torch.tensor(np.asarray(states), dtype=torch.float32) # shape: [time, c, h, w]
         actions = torch.tensor(np.array(actions), dtype=torch.int64)  # shape: [time]
         rewards = torch.tensor(np.array(rewards), dtype=torch.float32)  # shape: [time]
         rollout_length = rewards.shape[0]
@@ -181,7 +184,7 @@ class Worker(mp.Process):
     def work(self, n_iter):
         self.prev_memories = (self.prev_memories[0].detach(),
                             self.prev_memories[1].detach())
-        obs = []
+
         actions = []
         rewards = []
         logits = []
@@ -194,7 +197,6 @@ class Worker(mp.Process):
 
             new_observation, reward, done, _ = self.env.step(action[0])
 
-            obs.append(self.prev_observation)
             actions.append(action[0])
             rewards.append(reward)
             logits.append(logits_t)
@@ -213,11 +215,11 @@ class Worker(mp.Process):
 
         state_values.append(value_t * (1 - done))
 
-        return obs, actions, rewards, logits, state_values
+        return actions, rewards, logits, state_values
 
-    def train(self, opt, states, actions, rewards, is_done,
+    def train(self, opt, actions, rewards, is_done,
               prev_memory_states, gamma=0.99):
-      loss = self.lnet.compute_rollout_loss(states, actions, rewards, is_done,
+      loss = self.lnet.compute_rollout_loss(actions, rewards, is_done,
                                             prev_memory_states, gamma)
       opt.zero_grad()
       loss.backward()
@@ -230,8 +232,8 @@ class Worker(mp.Process):
         time.sleep(int(np.random.rand() * (self.process_id + 5)))
         while self.master.train_step.value < self.master.steps:
             self._sync_local_with_global()
-            obs, actions, rewards, logits, state_values = self.work(20)
-            self.train(self.opt, obs, actions, rewards, logits, state_values)
+            actions, rewards, logits, state_values = self.work(20)
+            self.train(self.opt, actions, rewards, logits, state_values)
             self.master.train_step.value += 1
 
 class Tester(mp.Process):
