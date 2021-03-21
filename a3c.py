@@ -93,9 +93,10 @@ class AC_Net(nn.Module):
         (h, c), (l, s) = self.forward(prev_state, obs_t)
         return (h, c), (l, s)
 
-    def compute_rollout_loss(self, actions, rewards,
+    def compute_rollout_loss(self, states, actions, rewards,
                             logits, state_values, gamma=0.99):
 
+        states = torch.tensor(np.asarray(states), dtype=torch.float32) # shape: [time, c, h, w]
         actions = torch.tensor(np.array(actions), dtype=torch.int64)  # shape: [time]
         rewards = torch.tensor(np.array(rewards), dtype=torch.float32)  # shape: [time]
         rollout_length = rewards.shape[0]
@@ -180,18 +181,20 @@ class Worker(mp.Process):
     def work(self, n_iter):
         self.prev_memories = (self.prev_memories[0].detach(),
                             self.prev_memories[1].detach())
+        obs = []
         actions = []
         rewards = []
         logits = []
         state_values = []
 
         for _ in range(n_iter):
-            self.prev_memories, (logits_t, value_t) = self.lnet.step(
+            new_memories, (logits_t, value_t) = self.lnet.step(
                 self.prev_memories, self.prev_observation[None, ...])
             action = self.lnet.sample_actions((logits_t, value_t))
 
-            self.prev_observation, reward, done, _ = self.env.step(action[0])
+            new_observation, reward, done, _ = self.env.step(action[0])
 
+            obs.append(self.prev_observation)
             actions.append(action[0])
             rewards.append(reward)
             logits.append(logits_t)
@@ -202,16 +205,19 @@ class Worker(mp.Process):
               self.prev_memories = self.lnet.get_initial_state(1)
               break
 
+            self.prev_memories = new_memories
+            self.prev_observation = new_observation
+
         _, (logits_t, value_t) = self.lnet.step(
             self.prev_memories, self.prev_observation[None, ...])
 
         state_values.append(value_t * (1 - done))
 
-        return actions, rewards, logits, state_values
+        return obs, actions, rewards, logits, state_values
 
-    def train(self, opt, actions, rewards, is_done,
+    def train(self, opt, states, actions, rewards, is_done,
               prev_memory_states, gamma=0.99):
-      loss = self.lnet.compute_rollout_loss(actions, rewards, is_done,
+      loss = self.lnet.compute_rollout_loss(states, actions, rewards, is_done,
                                             prev_memory_states, gamma)
       opt.zero_grad()
       loss.backward()
@@ -224,8 +230,8 @@ class Worker(mp.Process):
         time.sleep(int(np.random.rand() * (self.process_id + 5)))
         while self.master.train_step.value < self.master.steps:
             self._sync_local_with_global()
-            actions, rewards, logits, state_values = self.work(20)
-            self.train(self.opt, actions, rewards, logits, state_values)
+            obs, actions, rewards, logits, state_values = self.work(20)
+            self.train(self.opt, obs, actions, rewards, logits, state_values)
             self.master.train_step.value += 1
 
 class Tester(mp.Process):
@@ -324,4 +330,3 @@ if __name__ == "__main__":
       p.start()
     for p in processes:
       p.join()
-
