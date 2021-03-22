@@ -187,11 +187,11 @@ class Worker(mp.Process):
         state_values = []
 
         for _ in range(n_iter):
-            new_memories, (logits_t, value_t) = self.lnet.step(
+            self.prev_memories, (logits_t, value_t) = self.lnet.step(
                 self.prev_memories, self.prev_observation[None, ...])
             action = self.lnet.sample_actions((logits_t, value_t))
 
-            new_observation, reward, done, _ = self.env.step(action[0])
+            self.prev_observation, reward, done, _ = self.env.step(action[0])
 
             actions.append(action[0])
             rewards.append(reward)
@@ -202,9 +202,6 @@ class Worker(mp.Process):
               self.prev_observation = self.env.reset()
               self.prev_memories = self.lnet.get_initial_state(1)
               break
-
-            self.prev_memories = new_memories
-            self.prev_observation = new_observation
 
         _, (logits_t, value_t) = self.lnet.step(
             self.prev_memories, self.prev_observation[None, ...])
