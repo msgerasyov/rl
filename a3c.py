@@ -35,10 +35,6 @@ class Flatten(nn.Module):
     def forward(self, input):
         return input.view(input.size(0), -1)
 
-class Flatten(nn.Module):
-    def forward(self, input):
-        return input.view(input.size(0), -1)
-
 class AC_Net(nn.Module):
     def __init__(self, obs_shape, n_actions, lstm_size=128):
         """A simple actor-critic agent"""
@@ -217,10 +213,10 @@ class Worker(mp.Process):
 
         return actions, rewards, logits, state_values
 
-    def train(self, opt, actions, rewards, is_done,
-              prev_memory_states, gamma=0.99):
-      loss = self.lnet.compute_rollout_loss(actions, rewards, is_done,
-                                            prev_memory_states, gamma)
+    def train(self, opt, actions, rewards, logits,
+              state_values, gamma=0.99):
+      loss = self.lnet.compute_rollout_loss(actions, rewards, logits,
+                state_values, gamma)
       opt.zero_grad()
       loss.backward()
       torch.nn.utils.clip_grad_norm_(self.lnet.parameters(), MAX_GRAD)
