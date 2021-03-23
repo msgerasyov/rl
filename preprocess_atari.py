@@ -215,7 +215,7 @@ def make_env(env_name, reward_scale, crop = lambda img: img, n_frames=1, seed=No
     env = gym.make(env_name)  # create raw env
     if 'NoFrameskip' in env_name:
         assert 'NoFrameskip' in env.spec.id
-        env = NoopResetEnv(env, noop_max=30)
+        env = NoopResetEnv(env, noop_max=5)
         env = MaxAndSkipEnv(env, skip=args.skip_rate)
 
     if seed is not None:
