@@ -5,16 +5,16 @@ import time
 import cv2
 from gym.spaces import Box
 
-def preprocess_frame(frame):
+def preprocess_frame(frame, crop):
     img_size = (84, 84)
-    img = frame[10:-10,30:-30]
+    img = crop(frame)
     img = cv2.resize(img / 255, img_size, interpolation=cv2.INTER_LINEAR)
     img = img[None, :, :]
     return img
 
 class DoomEnv():
-    def __init__(self, scenario, reward_scale, preprocess_frame):
-        self.preprocess_frame = preprocess_frame
+    def __init__(self, scenario, reward_scale, crop):
+        self.crop = crop
         self.observation_space = Box(0.0, 1.0, (1, 84, 84))
         self.a_size = 3
         self.actions = np.identity(self.a_size, dtype=bool).tolist()
@@ -49,30 +49,13 @@ class DoomEnv():
         if done:
             next_state = None
         else:
-            next_state = self.preprocess_frame(self.game.get_state().screen_buffer)
+            next_state = preprocess_frame(self.game.get_state().screen_buffer, self.crop)
         return next_state, reward * self.reward_scale, done, None
 
     def reset(self):
         self.game.new_episode()
-        return self.preprocess_frame(self.game.get_state().screen_buffer)
+        return preprocess_frame(self.game.get_state().screen_buffer, self.crop)
 
 def make_env(scenario, reward_scale, crop = lambda img: img,
             preprocess_frame=preprocess_frame):
     return DoomEnv(scenario, reward_scale, preprocess_frame)
-
-if __name__ == '__main__':
-    episodes = 10
-    env = DoomEnv("basic.wad", 1, preprocess_frame=preprocess_frame)
-    for i in range(episodes):
-        total_reward = 0
-        env.reset()
-        while True:
-            next_s, reward, done, _ = env.step(random.choice(range(3)))
-            print("\treward:",reward)
-            total_reward += reward
-            time.sleep(0.02)
-            if done:
-                break
-
-        print("Result:", total_reward)
-        time.sleep(2)
