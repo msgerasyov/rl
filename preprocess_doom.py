@@ -20,7 +20,7 @@ class DoomEnv():
         self.actions = np.identity(self.a_size, dtype=bool).tolist()
         self.reward_scale = reward_scale
         self.game = DoomGame()
-        self.game.set_doom_scenario_path(scenario) #This corresponds to the simple task we will pose our agent
+        self.game.set_doom_scenario_path(scenario) 
         self.game.set_doom_map("map01")
         self.game.set_screen_resolution(ScreenResolution.RES_160X120)
         self.game.set_screen_format(ScreenFormat.GRAY8)
@@ -56,6 +56,5 @@ class DoomEnv():
         self.game.new_episode()
         return preprocess_frame(self.game.get_state().screen_buffer, self.crop)
 
-def make_env(scenario, reward_scale, crop = lambda img: img,
-            preprocess_frame=preprocess_frame):
-    return DoomEnv(scenario, reward_scale, preprocess_frame)
+def make_env(scenario, reward_scale, crop = lambda img: img):
+    return DoomEnv(scenario, reward_scale, crop)
