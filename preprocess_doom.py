@@ -50,8 +50,8 @@ class DoomEnv():
         reward = self.game.make_action(self.actions[action])
         new_health = self.game.get_game_variable(GameVariable.HEALTH)
         new_armor = self.game.get_game_variable(GameVariable.ARMOR)
-        reward += new_health - self.health
-        reward += new_armor - self.armor
+        reward += (new_health - self.health) * 0.01
+        reward += (new_armor - self.armor) * 0.01
         self.health = new_health
         self.armor = new_armor
         done = self.game.is_episode_finished()
