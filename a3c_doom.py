@@ -210,15 +210,15 @@ class Worker(mp.Process):
 
         return actions, rewards, logits, state_values
 
-    def train(self, opt, actions, rewards, logits, state_values, gamma=0.99):
+    def train(self, actions, rewards, logits, state_values, gamma=0.99):
         loss = self.lnet.compute_rollout_loss(actions, rewards, logits,
                 state_values, gamma)
-        opt.zero_grad()
+        self.opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.lnet.parameters(), MAX_GRAD)
         for lp, mp in zip(self.lnet.parameters(), self.master.parameters()):
             mp._grad = lp.grad
-        opt.step()
+        self.opt.step()
 
     def run(self):
         self.env = make_env(ENV_NAME, SCALE, crop=crop_func)
@@ -227,7 +227,7 @@ class Worker(mp.Process):
         while self.master.train_step.value < self.master.steps:
             self._sync_local_with_global()
             actions, rewards, logits, state_values = self.work(20)
-            self.train(self.opt, actions, rewards, logits, state_values)
+            self.train(actions, rewards, logits, state_values)
             self.master.train_step.value += 1
 
 class Tester(mp.Process):
@@ -238,7 +238,6 @@ class Tester(mp.Process):
         obs_shape = self.master.obs_shape
         n_actions = self.master.n_actions
         self.lnet = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
-        self.prev_memories = self.lnet.get_initial_state(1)
         self.rewards = []
         self.entropy = []
         self.n_games = n_games
@@ -282,7 +281,7 @@ class Tester(mp.Process):
         return np.mean(game_rewards), entropy_reg.item()
 
     def run(self):
-        self.env = make_env(ENV_NAME, SCALE, crop=crop_func)
+        self.env = make_env(ENV_NAME, 1, crop=crop_func)
         self.observation = self.env.reset()
         while self.master.train_step.value < self.master.steps:
             if self.master.train_step.value >= self.step:
@@ -326,3 +325,4 @@ if __name__ == "__main__":
         p.start()
     for p in processes:
         p.join()
+
