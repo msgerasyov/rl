@@ -10,11 +10,11 @@ import math
 os.environ["OMP_NUM_THREADS"] = "1"
 MAX_EP = 1000000
 N_WORKERS = 16
-EVAL_FREQ = 1000
+EVAL_FREQ = 5000
 LSTM_SIZE = 128
 MAX_GRAD = 40
 SCALE = 1
-CFG = "defend_the_center.cfg"
+CFG = "deathmatch.cfg"
 
 import cv2
 import numpy as np
@@ -24,7 +24,7 @@ from gym.spaces.box import Box
 from preprocess_doom import make_env
 
 def crop_func(img):
-  return img[10:-10, 30:-30]
+    return img[20:-20, 60:-60]
 
 import torch
 import torch.nn as nn
@@ -319,7 +319,7 @@ if __name__ == "__main__":
 
     # parallel training
     processes = [Worker(master, shared_opt, i) for i in range(N_WORKERS)]
-    processes.append(Tester(master, len(processes), EVAL_FREQ, n_games=10))
+    processes.append(Tester(master, len(processes), EVAL_FREQ, n_games=5))
     for p in processes:
         p.start()
     for p in processes:
