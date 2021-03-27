@@ -13,8 +13,8 @@ N_WORKERS = 16
 EVAL_FREQ = 1000
 LSTM_SIZE = 128
 MAX_GRAD = 40
-SCALE = 0.01
-ENV_NAME = "basic.wad"
+SCALE = 1
+CFG = "defend_the_center.cfg"
 
 import cv2
 import numpy as np
@@ -221,7 +221,7 @@ class Worker(mp.Process):
         self.opt.step()
 
     def run(self):
-        self.env = make_env(ENV_NAME, SCALE, crop=crop_func)
+        self.env = make_env(CFG, SCALE, crop=crop_func)
         self.observation = self.env.reset()
         time.sleep(int(np.random.rand() * (self.process_id + 5)))
         while self.master.train_step.value < self.master.steps:
@@ -281,37 +281,36 @@ class Tester(mp.Process):
         return np.mean(game_rewards), entropy_reg.item()
 
     def run(self):
-        self.env = make_env(ENV_NAME, 1, crop=crop_func)
-        self.observation = self.env.reset()
+        self.env = make_env(CFG, 1, crop=crop_func)
         while self.master.train_step.value < self.master.steps:
             if self.master.train_step.value >= self.step:
                 eval_step = self.master.train_step.value
                 self._sync_local_with_global()
                 torch.save(self.lnet.state_dict(),
-                            'a3c-{0}.weights'.format(ENV_NAME[0:3]))
+                            'a3c-{0}.weights'.format(CFG[0:3]))
                 mean_reward, entropy_reg = self.evaluate()
                 print(eval_step, "reward:", mean_reward, "entropy:", entropy_reg)
                 self.rewards.append((eval_step, mean_reward))
                 self.entropy.append((eval_step, entropy_reg))
                 self.step += self.eval_freq
-                with open('a3c-{0}_rewards.pkl'.format(ENV_NAME[0:3]), 'wb') as f:
+                with open('a3c-{0}_rewards.pkl'.format(CFG[0:3]), 'wb') as f:
                     pickle.dump(self.rewards, f)
-                with open('a3c-{0}_entropy.pkl'.format(ENV_NAME[0:3]), 'wb') as f:
+                with open('a3c-{0}_entropy.pkl'.format(CFG[0:3]), 'wb') as f:
                     pickle.dump(self.entropy, f)
 
 
 
 if __name__ == "__main__":
 
-    env = make_env(ENV_NAME, SCALE, crop = crop_func)
+    env = make_env(CFG, SCALE, crop = crop_func)
     obs_shape = env.observation_space.shape
     n_actions = env.a_size
 
     master = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
     master.steps = MAX_EP
     master.train_step = mp.Value('l', 0)
-    if os.path.exists('a3c-{0}.weights'.format(ENV_NAME[0:3])):
-        master.load_state_dict(torch.load('a3c-{0}.weights'.format(ENV_NAME[0:3])))
+    if os.path.exists('a3c-{0}.weights'.format(CFG[0:3])):
+        master.load_state_dict(torch.load('a3c-{0}.weights'.format(CFG[0:3])))
         print('Successfully loaded weights')
     master.share_memory()
     shared_opt = SharedAdam(master.parameters())
@@ -325,4 +324,3 @@ if __name__ == "__main__":
         p.start()
     for p in processes:
         p.join()
-
