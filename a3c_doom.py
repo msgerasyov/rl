@@ -14,7 +14,7 @@ EVAL_FREQ = 5000
 LSTM_SIZE = 128
 MAX_GRAD = 40
 SCALE = 1
-CFG = "deathmatch.cfg"
+CFG = "defend_the_center.cfg"
 
 import cv2
 import numpy as np
