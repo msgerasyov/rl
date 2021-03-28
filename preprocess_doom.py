@@ -43,17 +43,11 @@ class DoomEnv():
         #self.game.set_living_reward(-1)
         self.game.set_mode(Mode.PLAYER)
         self.game.init()
-        self.health = self.game.get_game_variable(GameVariable.HEALTH)
-        self.armor = self.game.get_game_variable(GameVariable.ARMOR)
+        #self.health = self.game.get_game_variable(GameVariable.HEALTH)
+        #self.armor = self.game.get_game_variable(GameVariable.ARMOR)
 
     def step(self, action):
         reward = self.game.make_action(self.actions[action])
-        new_health = self.game.get_game_variable(GameVariable.HEALTH)
-        new_armor = self.game.get_game_variable(GameVariable.ARMOR)
-        reward += (new_health - self.health) * 0.01
-        reward += (new_armor - self.armor) * 0.01
-        self.health = new_health
-        self.armor = new_armor
         done = self.game.is_episode_finished()
         if done:
             next_state = None
