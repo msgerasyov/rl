@@ -45,17 +45,18 @@ class DoomEnv():
         self.game.init()
         #self.health = self.game.get_game_variable(GameVariable.HEALTH)
         #self.armor = self.game.get_game_variable(GameVariable.ARMOR)
+        self.prev_state = None
 
     def step(self, action):
         reward = self.game.make_action(self.actions[action])
         done = self.game.is_episode_finished()
         if done:
-            next_state = None
+            next_state = self.prev_state
         else:
             next_state = preprocess_frame(self.game.get_state().screen_buffer, self.crop)
+            self.prev_state = next_state
+
         return next_state, reward * self.reward_scale, done, None
-
-
 
     def reset(self):
         self.game.new_episode()
