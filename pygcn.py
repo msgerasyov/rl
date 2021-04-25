@@ -91,7 +91,6 @@ class GCN(nn.Module):
         x = self.gc2(x, adj)
         return F.log_softmax(x, dim=1)
 
-
 def update_graph(model, optimizer, features, adj, rew_states, loss,
                 gcn_epochs=1, gcn_lambda=10.):
     if adj.shape[0] >1:
@@ -123,3 +122,31 @@ def update_graph(model, optimizer, features, adj, rew_states, loss,
         loss_train +=  gcn_lambda * loss_reg.squeeze()
         loss_train.backward()
         optimizer.step()
+
+
+def compute_graph_loss(model, features, adj, rew_states, loss, gcn_lambda=10.):
+    if adj.shape[0] >1:
+        labels = torch.zeros((len(features)))
+        idx_train = torch.LongTensor([0])
+        for r_s in rew_states:
+            labels[r_s[0]] = torch.tensor([1.]) if r_s[1] > 0. else torch.tensor([0.])
+            idx_train=torch.cat((idx_train, torch.LongTensor([r_s[0]]) ), 0)
+        labels= labels.type(torch.LongTensor)
+    else:
+        labels = torch.zeros((len(features))).type(torch.LongTensor)
+        idx_train = torch.LongTensor([0])
+
+    adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+    deg = np.diag(adj.toarray().sum(axis=1))
+    laplacian = torch.from_numpy((deg - adj.toarray()).astype(np.float32))
+    adj = normalize(sp.csr_matrix(adj) + sp.eye(adj.shape[0]))
+    adj = sparse_mx_to_torch_sparse_tensor(adj)
+
+    model.train()
+    output = model(features, adj)
+    loss_train = F.nll_loss(output[idx_train], labels[idx_train])
+    soft_out= torch.unsqueeze(torch.nn.functional.softmax(output,dim=1)[:,1],1)
+    loss_reg  = torch.mm(torch.mm(soft_out.T,laplacian),soft_out)
+    loss_train +=  gcn_lambda * loss_reg.squeeze()
+
+    return loss_train
