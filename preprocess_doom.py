@@ -13,7 +13,7 @@ def preprocess_frame(frame, crop):
     return img
 
 class DoomEnv():
-    def __init__(self, cfg, reward_scale, crop):
+    def __init__(self, cfg, reward_scale, crop, show_window = False):
         self.crop = crop
         self.observation_space = Box(0.0, 1.0, (1, 84, 84))
         self.reward_scale = reward_scale
@@ -38,7 +38,7 @@ class DoomEnv():
         #self.game.add_available_game_variable(GameVariable.POSITION_Y)
         #self.game.set_episode_timeout(300)
         #self.game.set_episode_start_time(10)
-        self.game.set_window_visible(False)
+        self.game.set_window_visible(show_window)
         self.game.set_sound_enabled(False)
         #self.game.set_living_reward(-1)
         self.game.set_mode(Mode.PLAYER)
@@ -62,5 +62,5 @@ class DoomEnv():
         self.game.new_episode()
         return preprocess_frame(self.game.get_state().screen_buffer, self.crop)
 
-def make_env(cfg, reward_scale, crop = lambda img: img):
-    return DoomEnv(cfg, reward_scale, crop)
+def make_env(cfg, reward_scale, crop = lambda img: img, show_window=False):
+    return DoomEnv(cfg, reward_scale, crop, show_window)
