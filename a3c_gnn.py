@@ -231,22 +231,23 @@ class Worker(mp.Process):
             self.node_ptr += 1
             if not done:
                 self.Gs.add_edge(self.node_ptr-1, self.node_ptr)
-            if reward > 0. or done:
+            if reward != 0. or done:
                 self.rew_states.append([self.node_ptr-1, reward])
             if done:
-                adj = nx.adjacency_matrix(self.Gs) if len(self.Gs.nodes)\
-                                else sp.csr_matrix(np.eye(1,dtype='int64'))
+                if len(self.gcn_states) > 1:
+                    adj = nx.adjacency_matrix(self.Gs) if len(self.Gs.nodes)\
+                                    else sp.csr_matrix(np.eye(1,dtype='int64'))
 
-                graph_loss = compute_graph_loss(self.lgcn,
-                    torch.stack(self.gcn_states), adj,
-                    self.rew_states, self.gcn_loss)
+                    graph_loss = compute_graph_loss(self.lgcn,
+                        torch.stack(self.gcn_states), adj,
+                        self.rew_states, self.gcn_loss)
 
-                graph_loss.backward()
+                    graph_loss.backward()
 
-                self.gcn_opt.zero_grad()
-                for lp, mp in zip(self.lgcn.parameters(), self.gcn.parameters()):
-                    mp._grad = lp.grad
-                self.gcn_opt.step()
+                    self.gcn_opt.zero_grad()
+                    for lp, mp in zip(self.lgcn.parameters(), self.gcn.parameters()):
+                        mp._grad = lp.grad
+                    self.gcn_opt.step()
 
                 self.gcn_states=[]
                 self.Gs=nx.Graph()
@@ -385,3 +386,4 @@ if __name__ == "__main__":
         p.start()
     for p in processes:
         p.join()
+
