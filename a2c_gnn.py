@@ -9,8 +9,8 @@ import pickle
 import math
 
 os.environ["OMP_NUM_THREADS"] = "1"
-MAX_EP = 30000
-NUM_PROCESSES = 4
+MAX_EP = 100000
+NUM_PROCESSES = 16
 NUM_STEPS = 10
 EVAL_FREQ = 150
 LSTM_SIZE = 128
@@ -324,7 +324,7 @@ if __name__ == "__main__":
 
         l = train_on_rollout(actions, rewards, dones, logits, state_values,
                                 hidden, gcn_model, opt, gamma=0.99, alpha=GCN_ALPHA)
-        if i % 100 == 0:
+        if i % 1000 == 0:
             rewards_history.append(np.mean(evaluate(agent, env, n_games=1)))
             print(rewards_history[-1])
         #break
