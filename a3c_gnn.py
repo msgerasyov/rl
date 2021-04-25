@@ -373,7 +373,7 @@ if __name__ == "__main__":
     gcn_model = GCN(nfeat=master.feature_size(), nhid=64)
     gcn_opt = SharedAdam(gcn_model.parameters(), lr=1e-3)
     if os.path.exists('gcn-{0}.weights'.format(CFG[0:3])):
-        master.load_state_dict(torch.load('gcn-{0}.weights'.format(CFG[0:3])))
+        gcn_model.load_state_dict(torch.load('gcn-{0}.weights'.format(CFG[0:3])))
         print('Successfully loaded weights')
     gcn_model.share_memory()
     print('Workers count:', N_WORKERS)
