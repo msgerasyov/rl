@@ -14,7 +14,7 @@ EVAL_FREQ = 5000
 LSTM_SIZE = 128
 MAX_GRAD = 40
 SCALE = 1
-GCN_ALPHA = 0.8
+GCN_ALPHA = 0.7
 CFG = "my_way_home.cfg"
 
 import cv2
@@ -106,15 +106,19 @@ class AC_Net(nn.Module):
         rewards = torch.tensor(np.array(rewards), dtype=torch.float32)  # shape: [time]
         rollout_length = rewards.shape[0]
 
-        hidden_states = torch.stack(hidden_states, dim=1).squeeze()
+        hidden_states = torch.stack(hidden_states, dim=1)
+        hidden_states = hidden_states.view(hidden_states.size(1), -1)
         logits = torch.stack(logits, dim=1)
         logits = logits.view(logits.size(1), -1)
         state_values = torch.stack(state_values, dim=1)
         state_values = torch.squeeze(state_values)
 
         adj = torch.eye(hidden_states.size(0))
-        gcn_phi = torch.exp(gcn(hidden_states, adj))
-        gcn_phi = gcn_phi[:,1].detach()
+        if hidden_states.size(0) > 1:
+            gcn_phi = torch.exp(gcn(hidden_states, adj))
+            gcn_phi = gcn_phi[:,1].detach()
+        else:
+            gcn_phi = torch.zeros(rewards.shape)
 
         probas = F.softmax(logits, dim=1)
         logprobas = F.log_softmax(logits, dim=1)
@@ -231,7 +235,7 @@ class Worker(mp.Process):
             self.node_ptr += 1
             if not done:
                 self.Gs.add_edge(self.node_ptr-1, self.node_ptr)
-            if reward != 0. or done:
+            if reward > 0. or done:
                 self.rew_states.append([self.node_ptr-1, reward])
             if done:
                 if len(self.gcn_states) > 1:
@@ -386,4 +390,5 @@ if __name__ == "__main__":
         p.start()
     for p in processes:
         p.join()
+
 
