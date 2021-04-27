@@ -114,11 +114,9 @@ class AC_Net(nn.Module):
         state_values = torch.squeeze(state_values)
 
         adj = torch.eye(hidden_states.size(0))
-        if hidden_states.size(0) > 1:
-            gcn_phi = torch.exp(gcn(hidden_states, adj))
-            gcn_phi = gcn_phi[:,1].detach()
-        else:
-            gcn_phi = torch.zeros(rewards.shape)
+
+        gcn_phi = torch.exp(gcn(hidden_states, adj))
+        gcn_phi = gcn_phi[:,1].detach()
 
         probas = F.softmax(logits, dim=1)
         logprobas = F.log_softmax(logits, dim=1)
@@ -303,6 +301,8 @@ class Tester(mp.Process):
 
         game_rewards = []
         logits = []
+        hidden_states = []
+
         for _ in range(self.n_games):
             # initial observation and memory
             observation = self.env.reset()
@@ -310,12 +310,13 @@ class Tester(mp.Process):
 
             total_reward = 0
             while True:
-                new_memories, (logits_t, value_t), _ = self.lnet.step(
+                new_memories, (logits_t, value_t), hid = self.lnet.step(
                     prev_memories, observation[None, ...])
                 action = self.lnet.sample_actions((logits_t, value_t))
 
                 observation, reward, done, info = self.env.step(action[0])
 
+                hidden_states.append(hid)
                 logits.append(logits_t)
                 total_reward += reward
                 prev_memories = new_memories
