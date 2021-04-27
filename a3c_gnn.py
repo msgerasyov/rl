@@ -196,7 +196,6 @@ class Worker(mp.Process):
         obs_shape = self.master.obs_shape
         n_actions = self.master.n_actions
         self.lnet = AC_Net(obs_shape, n_actions, lstm_size=LSTM_SIZE)
-        self.lgcn = GCN(nfeat=self.master.feature_size(), nhid=64)
         self.gcn_loss = nn.NLLLoss()
         self.gcn_states = []
         self.Gs = nx.Graph()
@@ -206,7 +205,6 @@ class Worker(mp.Process):
 
     def _sync_local_with_global(self):
         self.lnet.load_state_dict(self.master.state_dict())
-        self.lgcn.load_state_dict(self.gcn.state_dict())
 
     def work(self, n_iter):
         self.memories = (self.memories[0].detach(),
@@ -242,16 +240,9 @@ class Worker(mp.Process):
                     adj = nx.adjacency_matrix(self.Gs) if len(self.Gs.nodes)\
                                     else sp.csr_matrix(np.eye(1,dtype='int64'))
 
-                    graph_loss = compute_graph_loss(self.lgcn,
+                    update_graph(self.gcn, self.gcn_opt,
                         torch.stack(self.gcn_states), adj,
                         self.rew_states, self.gcn_loss)
-
-                    graph_loss.backward()
-
-                    self.gcn_opt.zero_grad()
-                    for lp, mp in zip(self.lgcn.parameters(), self.gcn.parameters()):
-                        mp._grad = lp.grad
-                    self.gcn_opt.step()
 
                 self.gcn_states=[]
                 self.Gs=nx.Graph()
@@ -271,7 +262,7 @@ class Worker(mp.Process):
 
     def train(self, actions, rewards, logits, state_values, hidden_states, gamma=0.99):
         loss = self.lnet.compute_rollout_loss(actions, rewards, logits,
-                state_values, hidden_states, self.lgcn, GCN_ALPHA, gamma)
+                state_values, hidden_states, self.gcn, GCN_ALPHA, gamma)
         self.opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(self.lnet.parameters(), MAX_GRAD)
@@ -390,5 +381,3 @@ if __name__ == "__main__":
         p.start()
     for p in processes:
         p.join()
-
-
