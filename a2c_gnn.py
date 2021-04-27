@@ -15,7 +15,7 @@ NUM_STEPS = 10
 EVAL_FREQ = 150
 LSTM_SIZE = 128
 MAX_GRAD = 40
-GCN_ALPHA = 0.8
+GCN_ALPHA = 0.7
 SCALE = 1
 CFG = "my_way_home.cfg"
 
@@ -327,4 +327,8 @@ if __name__ == "__main__":
         if i % 1000 == 0:
             rewards_history.append(np.mean(evaluate(agent, env, n_games=1)))
             print(rewards_history[-1])
+            torch.save(agent.state_dict(),
+                        'a2c-{0}.weights'.format(CFG[0:3]))
+            torch.save(gcn_model.state_dict(),
+                        'gcn-{0}.weights'.format(CFG[0:3]))
         #break
